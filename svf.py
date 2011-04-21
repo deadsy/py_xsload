@@ -5,32 +5,10 @@ SVF File Interpreter
 """
 #------------------------------------------------------------------------------
 
-class virtual_jtag:
-
-    def __init__(self):
-        pass
-
-    def scan_ir(self, tdi, tdo = None):
-        """write (and possibly read) a bit stream through the IR in the JTAG chain"""
-        pass
-
-    def scan_dr(self, tdi, tdo = None):
-        """write (and possibly read) a bit stream through the DR in the JTAG chain"""
-        pass
-
-    def set_frequency(self, f):
-        """set the tck frequency"""
-        pass
-
-    def delay(self, n):
-        """delay n tck cycles"""
-        print 'delay %d tck cycles' % n
+import utils
+import bits
 
 #------------------------------------------------------------------------------
-
-def unparen(x):
-    """string (hex-number) to integer"""
-    return long(x[1:-1], 16)
 
 class svf:
 
@@ -38,79 +16,89 @@ class svf:
         self.filename = filename
         self.jtag = jtag
 
-    def parse_tdi_tdo(self, parms, n):
-        """length TDI (tdi) SMASK (smask) [TDO (tdo) MASK (mask)]"""
-        x = parms.split()
-        vals = dict(zip(x[1::2], [unparen(v) for v in x[2::2]]))
-        vals['NBITS'] = int(x[0])
+    def parse_tdi_tdo(self, args):
+        """
+            parse: length TDI (tdi) SMASK (smask) [TDO (tdo) MASK (mask)]
+            return the values in a dictionary
+        """
+        vals = dict(zip(args[1::2], [utils.unparen(v) for v in args[2::2]]))
+        vals['NBITS'] = int(args[0])
         if not vals.has_key('TDI'):
-            self.errors.append('line %d: missing TDI parameter' % n)
+            self.errors.append('line %d: missing TDI parameter' % self.line)
         return vals
 
-    def cmd_do_nothing(self, cmd, parms, n):
-        pass
+    def validate_tdo(self, tdo, vals):
+        """validate returned tdo bits against expectations"""
+        if vals.has_key('TDO'):
+            return True
+        else:
+            return True
 
-    def cmd_unknown(self, cmd, parms, n):
-        self.errors.append('line %d: unrecognised command - "%s"' % (n, cmd))
+    def cmd_todo(self, args):
+        """command not implemented"""
+        return True
 
-    def cmd_sir(self, cmd, parms, n):
-        """SIR length TDI (tdi) SMASK (smask) [TDO (tdo) MASK (mask)]"""
-        print('line %d: %s %s' % (n, cmd, parms))
-        vals = self.parse_tdi_tdo(parms, n)
-        #tdi = bits.bitbuffer(vals['NBITS'], val['TDI'])
-        self.jtag.scan_ir(None)
+    def cmd_unknown(self, args):
+        """command unknown"""
+        self.errors.append('line %d: unknown command - "%s"' % (self.line, args[0]))
+        return True
 
-    def cmd_sdr(self, cmd, parms, n):
-        """SDR length TDI (tdi) SMASK (smask) [TDO (tdo) MASK (mask)]"""
-        print('line %d: %s %s' % (n, cmd, parms))
-        vals = self.parse_tdi_tdo(parms, n)
-        self.jtag.scan_dr(None)
+    def cmd_sir(self, args):
+        """command: SIR length TDI (tdi) SMASK (smask) [TDO (tdo) MASK (mask)]"""
+        vals = self.parse_tdi_tdo(args[1:])
+        tdi = bits.bits(vals['NBITS'], vals['TDI'])
+        tdo = bits.bits()
+        self.jtag.scan_ir(tdi, tdo)
+        return self.validate_tdo(tdo, vals)
 
-    def cmd_runtest(self, cmd, parms, n):
-        """RUNTEST run_count TCK"""
-        x = parms.split(' ', 1)
-        if x[1] != 'TCK':
-            self.errors.append('line %d: unrecognised RUNTEST unit - "%s"' % (n, x[1]))
-        self.jtag.delay(int(x[0]))
+    def cmd_sdr(self, args):
+        """command: SDR length TDI (tdi) SMASK (smask) [TDO (tdo) MASK (mask)]"""
+        vals = self.parse_tdi_tdo(args[1:])
+        tdi = bits.bits(vals['NBITS'], vals['TDI'])
+        tdo = bits.bits()
+        self.jtag.scan_dr(tdi, tdo)
+        return self.validate_tdo(tdo, vals)
+
+    def cmd_runtest(self, args):
+        """command: RUNTEST run_count TCK"""
+        if args[2] != 'TCK':
+            self.errors.append('line %d: unrecognized RUNTEST unit - "%s"' % (self.line, args[2]))
+        self.jtag.delay(int(args[1]))
+        return True
 
     def playback(self):
+        """playback an svf file through the jtag device"""
         self.errors = []
+        self.line = 0
         f = open(self.filename, 'r')
-        n = 0
         errors = []
         funcs = {
             'SDR': self.cmd_sdr,
-            'HDR': self.cmd_do_nothing,
-            'TDR': self.cmd_do_nothing,
-            'ENDDR': self.cmd_do_nothing,
+            'HDR': self.cmd_todo,
+            'TDR': self.cmd_todo,
+            'ENDDR': self.cmd_todo,
             'SIR': self.cmd_sir,
-            'HIR': self.cmd_do_nothing,
-            'TIR': self.cmd_do_nothing,
-            'ENDIR': self.cmd_do_nothing,
+            'HIR': self.cmd_todo,
+            'TIR': self.cmd_todo,
+            'ENDIR': self.cmd_todo,
             'RUNTEST': self.cmd_runtest,
-            'TRST': self.cmd_do_nothing,
-            'STATE': self.cmd_do_nothing,
-            'FREQUENCY': self.cmd_do_nothing,
+            'TRST': self.cmd_todo,
+            'STATE': self.cmd_todo,
+            'FREQUENCY': self.cmd_todo,
         }
         for l in f:
-            n += 1
+            self.line += 1
             l = l.strip()
             if l.startswith('//'):
                 continue
             if not l.endswith(';'):
-                self.errors.append('line %d: missing ; at end of line' % n)
+                self.errors.append('line %d: missing ; at end of line' % self.line)
                 continue
             l = l.rstrip(';')
-            x = l.split(' ', 1)
-            funcs.get(x[0], self.cmd_unknown)(x[0], x[1], n)
+            args = l.split()
+            print('line %d: %s' % (self.line, ' '.join(args)))
+            funcs.get(args[0], self.cmd_unknown)(args)
         f.close()
         return self.errors
 
 #------------------------------------------------------------------------------
-
-x = svf('dwnldpar.svf', virtual_jtag())
-e = x.playback()
-if len(e):
-    print '\n'.join(e)
-else:
-    print 'no errors'

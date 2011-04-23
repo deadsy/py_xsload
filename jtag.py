@@ -22,34 +22,10 @@ _idcode_length = 32
 #-----------------------------------------------------------------------------
 # Device ID Codes and Lookup Table
 
-IDCODE_CN3010       = 0x20500399
-IDCODE_CN5010       = 0x10b00399
-IDCODE_XLR532_RA    = 0x00000449
-IDCODE_XLR532_RB0   = 0x20000449
-IDCODE_XLR532_RB1   = 0x30000449
-IDCODE_XLR532_RB2   = 0x40009449
-IDCODE_XLR308       = 0x40006449
-IDCODE_XLS108       = 0x100ce449
-IDCODE_IXP425       = 0x19274013
-IDCODE_PPC405EP     = 0x20267049
-IDCODE_ATHEROS      = 0x00000001
-IDCODE_CN5200       = 0x00c01399
-IDCODE_APM82181	    = 0x146411e1
+IDCODE_XC9572XL = 0x59604093
 
 _idcode_lookup = {
-    IDCODE_CN3010: ('MIPS64 Cavium Octeon CN3010', 5),
-    IDCODE_CN5010: ('MIPS64 Cavium Octeon CN5010', 5),
-    IDCODE_XLR532_RA: ('MIPS64 RMI XLR532 rev A', 0),
-    IDCODE_XLR532_RB0: ('MIPS64 RMI XLR532 rev B.0', 0),
-    IDCODE_XLR532_RB1: ('MIPS64 RMI XLR532 rev B.1', 0),
-    IDCODE_XLR532_RB2: ('MIPS64 RMI XLR532 rev B.2 low-power', 0),
-    IDCODE_XLR308: ('MIPS64 RMI XLR308', 0),
-    IDCODE_XLS108: ('MIPS64 RMI XLS108', 50),
-    IDCODE_IXP425: ('XScale Intel IXP425', 0),
-    IDCODE_PPC405EP: ('PowerPC IBM PPC405EP', 0),
-    IDCODE_ATHEROS: ('MIPS32 Atheros AR2313/2315/7161/7240/7242/935x', 5),
-    IDCODE_CN5200: ('MIPS64 Cavium Octeon CN5200', 5),
-    IDCODE_APM82181: ('PowerPC AMCC APM82181', 7),
+    IDCODE_XC9572XL: ('Xilinx XC9572XL CPLD', 8),
 }
 
 #-----------------------------------------------------------------------------

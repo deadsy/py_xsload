@@ -80,6 +80,13 @@ class bits:
             self.n = 0
             self.val = 0
 
+    def shr(self, bit_in = 0):
+        """shift right"""
+        bit_out = self.val & 1
+        self.val >>= 1
+        self.val |= (bit_in << self.n)
+        return bit_out
+
     def get(self):
         """return a byte array of the bits"""
         a = array.array('B')

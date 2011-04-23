@@ -5,7 +5,9 @@ PyXS - Python based XSLoad tool for XESS FPGA Development Boards
 """
 #------------------------------------------------------------------------------
 
-import jtag_bitbang
+import logging
+
+import bitbang
 import jtag
 import xsa3s1000
 import pport
@@ -28,10 +30,14 @@ def main2():
         print x.jtag_in()
 
 def main():
-    driver = jtag_bitbang.jtag(xsa3s1000.cpld(pport.io(0)))
+    driver = bitbang.jtag(xsa3s1000.cpld(pport.io(0)))
     chain = jtag.chain(0, driver)
     chain.scan()
+    print chain
 
+#------------------------------------------------------------------------------
+
+logging.getLogger('').addHandler(logging.StreamHandler())
 main()
 
 #------------------------------------------------------------------------------

@@ -35,5 +35,7 @@ class io:
         """read status byte"""
         return self.p.PPRSTATUS()
 
+    def __str__(self):
+        return self.p.device
 
 #-----------------------------------------------------------------------------

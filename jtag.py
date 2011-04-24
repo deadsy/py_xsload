@@ -22,11 +22,18 @@ _idcode_length = 32
 #-----------------------------------------------------------------------------
 # Device ID Codes and Lookup Table
 
-IDCODE_XC9572XL = 0x59604093
+IDCODE_XC9572XL = 0x09604093
 
-_idcode_lookup = {
-    IDCODE_XC9572XL: ('Xilinx XC9572XL CPLD', 8),
-}
+device_table = (
+    (IDCODE_XC9572XL, 'Xilinx XC9572XL CPLD', 8, 0xfffffff),
+)
+
+def lookup_device(x):
+    """lookup a device by idcode"""
+    for (idcode, name, irlen, mask) in device_table:
+        if x & mask == idcode:
+            return (name, irlen)
+    return ('Unknown', 0)
 
 #-----------------------------------------------------------------------------
 
@@ -67,13 +74,11 @@ class chain:
         self.irlen = self.ir_length()
         unknown = []
         for idcode in self.reset_idcodes():
-            if _idcode_lookup.has_key(idcode):
-                (name, irlen) = _idcode_lookup[idcode]
-                dev = device(self, len(self.devices), idcode, name, irlen)
-            else:
-                dev = device(self, len(self.devices), idcode, 'Unknown', 0)
-                unknown.append(dev)
+            (name, irlen) = lookup_device(idcode)
+            dev = device(self, len(self.devices), idcode, name, irlen)
             self.devices.append(dev)
+            if name == 'Unknown':
+                unknown.append(dev)
         # assume that a single unknown device makes up any irlen shortfall
         delta = self.irlen - self.device_ir_length()
         if (delta > 0) and (len(unknown) == 1):

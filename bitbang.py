@@ -15,7 +15,7 @@ _log = logging.getLogger('bitbang')
 
 #------------------------------------------------------------------------------
 
-class jtag:
+class jtag_driver:
 
     def __init__(self, io):
         self.io = io
@@ -103,6 +103,6 @@ class jtag:
 
     def __str__(self):
         """return a string describing the device"""
-        return 'bit bang'
+        return 'bit bang using %s' % str(self.io)
 
 #------------------------------------------------------------------------------

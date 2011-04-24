@@ -6,7 +6,9 @@ See - http://www.xess.com/prods/prod035.php
 """
 #-----------------------------------------------------------------------------
 
-import time
+import bitbang
+import pport
+import jtag
 
 #-----------------------------------------------------------------------------
 # map the cpld jtag pins to the parallel port
@@ -16,7 +18,7 @@ _CPLD_TMS = (1 << 2) # parallel port c2 - pin 16
 _CPLD_TDI = (1 << 3) # parallel port c3 - pin 17
 _CPLD_TDO_BIT = 7    # parallel port S7 - pin 11
 
-class cpld:
+class cpld_jtag:
 
     def __init__(self, io):
         self.io = io
@@ -37,11 +39,19 @@ class cpld:
         """get the tdo bit"""
         return ((self.io.rd_status() >> _CPLD_TDO_BIT) & 1) ^ 1
 
+    def __str__(self):
+        return '%s (xsa3s1000)' % str(self.io)
+
 #-----------------------------------------------------------------------------
 
 class board:
 
-    def __init__(self):
-        pass
+    def __init__(self, itf = None):
+        # TODO - itf - interface selection
+        self.cpld_chain = jtag.chain(0, bitbang.jtag_driver(cpld_jtag(pport.io(0))))
+        self.cpld_chain.scan()
+
+    def __str__(self):
+        return str(self.cpld_chain)
 
 #-----------------------------------------------------------------------------

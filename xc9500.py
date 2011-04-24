@@ -1,22 +1,19 @@
 # -*- coding: utf-8 -*-
 #------------------------------------------------------------------------------
 """
-PyXS - Python based XSLoad tool for XESS FPGA Development Boards
+Definitions and functions specific to the Xilinx XC9500 CPLDs
 """
 #------------------------------------------------------------------------------
 
-import logging
-import xsa3s1000
+
 
 #------------------------------------------------------------------------------
 
-def main():
-    b = xsa3s1000.board()
-    print b
+class xc9500:
+    """Xilinx XC9500 CPLD"""
 
-#------------------------------------------------------------------------------
+    def __init__(self):
+        pass
 
-logging.getLogger('').addHandler(logging.StreamHandler())
-main()
 
 #------------------------------------------------------------------------------

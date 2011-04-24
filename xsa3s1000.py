@@ -9,6 +9,12 @@ See - http://www.xess.com/prods/prod035.php
 import bitbang
 import pport
 import jtag
+import xc9500
+
+#-----------------------------------------------------------------------------
+
+class Error(Exception):
+    pass
 
 #-----------------------------------------------------------------------------
 # map the cpld jtag pins to the parallel port
@@ -48,10 +54,23 @@ class board:
 
     def __init__(self, itf = None):
         # TODO - itf - interface selection
-        self.cpld_chain = jtag.chain(0, bitbang.jtag_driver(cpld_jtag(pport.io(0))))
-        self.cpld_chain.scan()
+        pass
+
+    def cpld_init(self):
+        """setup the cpld access"""
+        driver = bitbang.jtag_driver(cpld_jtag(pport.io(0)))
+        chain = jtag.chain(0, driver)
+        chain.scan()
+        # the cpld should be the 1 and only device on the chain
+        if len(chain.devices) != 1:
+            raise Error, 'wrong number of devices on cpld jtag chain (is %d, expected 1)' % len(chain.devices)
+        device = chain.devices[0]
+        # check the cpld idcode
+        if device.idcode != jtag.IDCODE_XC9572XL:
+            raise Error, 'wrong idcode for cpld (is 0x%08x, expected 0x%08x)' % (device.idcode, jtag.IDCODE_XC9572XL)
+        self.cpld = xc9500.xc9500(chain, device)
 
     def __str__(self):
-        return str(self.cpld_chain)
+        return str(self.cpld)
 
 #-----------------------------------------------------------------------------

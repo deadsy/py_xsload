@@ -32,8 +32,8 @@ def lookup_device(x):
     """lookup a device by idcode"""
     for (idcode, name, irlen, mask) in device_table:
         if x & mask == idcode:
-            return (name, irlen)
-    return ('Unknown', 0)
+            return (name, irlen, mask)
+    return ('Unknown', 0, 0xffffffff)
 
 #-----------------------------------------------------------------------------
 
@@ -74,8 +74,8 @@ class chain:
         self.irlen = self.ir_length()
         unknown = []
         for idcode in self.reset_idcodes():
-            (name, irlen) = lookup_device(idcode)
-            dev = device(self, len(self.devices), idcode, name, irlen)
+            (name, irlen, mask) = lookup_device(idcode)
+            dev = device(self, len(self.devices), idcode & mask, name, irlen)
             self.devices.append(dev)
             if name == 'Unknown':
                 unknown.append(dev)

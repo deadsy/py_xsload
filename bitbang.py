@@ -46,7 +46,7 @@ class jtag_driver:
         tdi - bit buffer of data to be written to the JTAG TDI pin
         tdo - bit buffer for the data read from the JTAG TDO pin (optional)
         """
-        if tdo == None:
+        if tdo is None:
             for i in range(tdi.n - 1):
                 self.clock_data_o(0, tdi.shr())
             # last bit

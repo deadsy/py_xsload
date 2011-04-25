@@ -124,6 +124,12 @@ class bits:
         l.reverse()
         return tuple(l)
 
+    def __and__(self, x):
+        return bits(min(self.n, x.n), self.val & x.val)
+
+    def __eq__(self, x):
+        return (self.n == x.n) and (self.val == x.val)
+
     def __str__(self):
         return '(%d) %x' % (self.n, self.val)
 

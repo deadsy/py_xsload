@@ -17,6 +17,24 @@ class Error(Exception):
     pass
 
 #-----------------------------------------------------------------------------
+
+_file_path = './bitfiles/XSA/3S1000/LPT/'
+
+_cpld_files = (
+    'dwnldpar.svf',
+    'erase.svf',
+    'fcnfg.svf',
+    'p3jtag.svf',
+    'p4jtag.svf',
+)
+
+_fpga_files = (
+    'fintf.bit',
+    'ramintfc.bit',
+    'test_board.bit',
+)
+
+#-----------------------------------------------------------------------------
 # map the cpld jtag pins to the parallel port
 
 _CPLD_TCK = (1 << 1) # parallel port c1 - pin 14
@@ -68,7 +86,11 @@ class board:
         # check the cpld idcode
         if device.idcode != jtag.IDCODE_XC9572XL:
             raise Error, 'wrong idcode for cpld (is 0x%08x, expected 0x%08x)' % (device.idcode, jtag.IDCODE_XC9572XL)
-        self.cpld = xc9500.xc9500(chain, device)
+        self.cpld = xc9500.xc9500(device)
+
+    def cpld_configure(self, filename):
+        """configure the cpld with an svf file"""
+        self.cpld.configure(''.join((_file_path, filename)))
 
     def __str__(self):
         return str(self.cpld)

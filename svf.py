@@ -5,6 +5,8 @@ SVF File Interpreter
 """
 #------------------------------------------------------------------------------
 
+import time
+
 import utils
 import bits
 
@@ -12,9 +14,10 @@ import bits
 
 class svf:
 
-    def __init__(self, filename, jtag):
+    def __init__(self, filename, device):
         self.filename = filename
-        self.jtag = jtag
+        self.device = device
+        self.tck_period = 0.0
 
     def parse_tdi_tdo(self, args):
         """
@@ -30,7 +33,11 @@ class svf:
     def validate_tdo(self, tdo, vals):
         """validate returned tdo bits against expectations"""
         if vals.has_key('TDO'):
-            return True
+            n = vals['NBITS']
+            tdo_expected = bits.bits(n, vals['TDO'])
+            if vals.has_key('MASK'):
+                tdo &= bits.bits(n, vals['MASK'])
+            return tdo == tdo_expected
         else:
             return True
 
@@ -43,27 +50,35 @@ class svf:
         self.errors.append('line %d: unknown command - "%s"' % (self.line, args[0]))
         return True
 
-    def cmd_sir(self, args):
-        """command: SIR length TDI (tdi) SMASK (smask) [TDO (tdo) MASK (mask)]"""
-        vals = self.parse_tdi_tdo(args[1:])
-        tdi = bits.bits(vals['NBITS'], vals['TDI'])
-        tdo = bits.bits()
-        self.jtag.scan_ir(tdi, tdo)
-        return self.validate_tdo(tdo, vals)
+    def cmd_chain(self, args):
+        """ignore chain context commands"""
+        if args[1] != 0:
+            self.errors.append('line %d: non support for non-zero %s length' % (self.line, args[0]))
+        return True
 
-    def cmd_sdr(self, args):
-        """command: SDR length TDI (tdi) SMASK (smask) [TDO (tdo) MASK (mask)]"""
+    def cmd_frequency(self, args):
+        if args[2] != 'HZ':
+            self.errors.append('line %d: unrecognized %s unit - "%s"' % (self.line, args[0], args[2]))
+        self.tck_period = 1 / float(args[1])
+        return True
+
+    def cmd_sdr_sir(self, args):
+        """command: SDR/SIR length TDI (tdi) SMASK (smask) [TDO (tdo) MASK (mask)]"""
         vals = self.parse_tdi_tdo(args[1:])
         tdi = bits.bits(vals['NBITS'], vals['TDI'])
-        tdo = bits.bits()
-        self.jtag.scan_dr(tdi, tdo)
+        tdo = (None, bits.bits())[vals.has_key('TDO')]
+        if args[0] == 'SDR':
+            self.device.scan_dr(tdi, tdo)
+        else:
+            self.device.scan_ir(tdi, tdo)
         return self.validate_tdo(tdo, vals)
 
     def cmd_runtest(self, args):
         """command: RUNTEST run_count TCK"""
         if args[2] != 'TCK':
-            self.errors.append('line %d: unrecognized RUNTEST unit - "%s"' % (self.line, args[2]))
-        self.jtag.delay(int(args[1]))
+            self.errors.append('line %d: unrecognized %s unit - "%s"' % (self.line, args[0], args[2]))
+        print self.tck_period * int(args[1])
+        time.sleep(self.tck_period * int(args[1]))
         return True
 
     def playback(self):
@@ -73,18 +88,18 @@ class svf:
         f = open(self.filename, 'r')
         errors = []
         funcs = {
-            'SDR': self.cmd_sdr,
-            'HDR': self.cmd_todo,
-            'TDR': self.cmd_todo,
+            'SDR': self.cmd_sdr_sir,
+            'HDR': self.cmd_chain,
+            'TDR': self.cmd_chain,
             'ENDDR': self.cmd_todo,
-            'SIR': self.cmd_sir,
-            'HIR': self.cmd_todo,
-            'TIR': self.cmd_todo,
+            'SIR': self.cmd_sdr_sir,
+            'HIR': self.cmd_chain,
+            'TIR': self.cmd_chain,
             'ENDIR': self.cmd_todo,
             'RUNTEST': self.cmd_runtest,
             'TRST': self.cmd_todo,
             'STATE': self.cmd_todo,
-            'FREQUENCY': self.cmd_todo,
+            'FREQUENCY': self.cmd_frequency,
         }
         for l in f:
             self.line += 1
@@ -97,7 +112,7 @@ class svf:
             l = l.rstrip(';')
             args = l.split()
             print('line %d: %s' % (self.line, ' '.join(args)))
-            funcs.get(args[0], self.cmd_unknown)(args)
+            print funcs.get(args[0], self.cmd_unknown)(args)
         f.close()
         return self.errors
 

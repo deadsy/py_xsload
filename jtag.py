@@ -49,11 +49,14 @@ class device:
     def wr_ir(self, wr):
         self.jtag.wr_ir(self, wr)
 
-    def rw_dr(self, wr, rd):
-        self.jtag.rw_dr(self, wr, rd)
+    def rw_ir(self, wr, rd):
+        self.jtag.rw_ir(self, wr, rd)
 
     def wr_dr(self, wr):
         self.jtag.wr_dr(self, wr)
+
+    def rw_dr(self, wr, rd):
+        self.jtag.rw_dr(self, wr, rd)
 
     def __str__(self):
         return 'device %d: idcode 0x%08x irlen %d bits - %s' % (self.idx, self.idcode, self.irlen, self.name)
@@ -160,6 +163,33 @@ class chain:
             else:
                 tdi.append_ones(device.irlen)
         self.driver.scan_ir(tdi)
+
+    def rw_ir(self, dev, wr, rd):
+        """
+        read/write IR for a device
+        dev: the device that needs dr read/written
+        wr: bitbuffer to be written to ir for this device
+        rd: bitbuffer to be read from ir for this device
+        note - other devices are assumed to be in bypass mode
+        """
+        tdi = bits.bits()
+        before = 0
+        after = 0
+        found = False
+        for device in self.devices:
+            if dev == device:
+                tdi.append(wr)
+                found = True
+            else:
+                tdi.append_ones(device.irlen)
+                if not found:
+                    before += device.irlen
+                else:
+                    after += device.irlen
+        self.driver.scan_ir(tdi, rd)
+        # strip the ir bits from the bypassed devices
+        rd.drop_msb(before)
+        rd.drop_lsb(after)
 
     def wr_dr(self, dev, wr):
         """

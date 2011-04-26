@@ -12,6 +12,11 @@ import bits
 
 #------------------------------------------------------------------------------
 
+class Error(Exception):
+    pass
+
+#------------------------------------------------------------------------------
+
 class svf:
 
     def __init__(self, filename, device):
@@ -27,7 +32,7 @@ class svf:
         vals = dict(zip(args[1::2], [utils.unparen(v) for v in args[2::2]]))
         vals['NBITS'] = int(args[0])
         if not vals.has_key('TDI'):
-            self.errors.append('line %d: missing TDI parameter' % self.line)
+            raise Error, 'line %d: missing TDI parameter' % self.line
         return vals
 
     def validate_tdo(self, tdo, vals):
@@ -39,30 +44,26 @@ class svf:
                 mask = bits.bits(n, vals['MASK'])
                 tdo &= mask
                 tdo_expected &= mask
-            return tdo == tdo_expected
-        else:
-            return True
+            if tdo != tdo_expected:
+                raise Error, 'line %d: tdo actual/expected mismatch' % self.line
 
     def cmd_todo(self, args):
         """command not implemented"""
-        return True
+        print('line %d: %s (todo)' % (self.line, ' '.join(args)))
 
     def cmd_unknown(self, args):
         """command unknown"""
-        self.errors.append('line %d: unknown command - "%s"' % (self.line, args[0]))
-        return True
+        raise Error, 'line %d: unknown command - "%s"' % (self.line, args[0])
 
     def cmd_chain(self, args):
         """ignore chain context commands"""
-        if args[1] != 0:
-            self.errors.append('line %d: non support for non-zero %s length' % (self.line, args[0]))
-        return True
+        if int(args[1]) != 0:
+            raise Error, 'line %d: no support for non-zero %s length' % (self.line, args[0])
 
     def cmd_frequency(self, args):
         if args[2] != 'HZ':
-            self.errors.append('line %d: unrecognized %s unit - "%s"' % (self.line, args[0], args[2]))
+            raise Error, 'line %d: unrecognized %s unit - "%s"' % (self.line, args[0], args[2])
         self.tck_period = 1.0 / float(args[1])
-        return True
 
     def cmd_sdr_sir(self, args):
         """command: SDR/SIR length TDI (tdi) SMASK (smask) [TDO (tdo) MASK (mask)]"""
@@ -73,21 +74,18 @@ class svf:
             self.device.scan_dr(tdi, tdo)
         else:
             self.device.scan_ir(tdi, tdo)
-        return self.validate_tdo(tdo, vals)
+        self.validate_tdo(tdo, vals)
 
     def cmd_runtest(self, args):
         """command: RUNTEST run_count TCK"""
         if args[2] != 'TCK':
-            self.errors.append('line %d: unrecognized %s unit - "%s"' % (self.line, args[0], args[2]))
+            raise Error, 'line %d: unrecognized %s unit - "%s"' % (self.line, args[0], args[2])
         time.sleep(2.0 * self.tck_period * int(args[1]))
-        return True
 
     def playback(self):
         """playback an svf file through the jtag device"""
-        self.errors = []
         self.line = 0
         f = open(self.filename, 'r')
-        errors = []
         funcs = {
             'SDR': self.cmd_sdr_sir,
             'HDR': self.cmd_chain,
@@ -108,13 +106,11 @@ class svf:
             if l.startswith('//'):
                 continue
             if not l.endswith(';'):
-                self.errors.append('line %d: missing ; at end of line' % self.line)
-                continue
+                raise Error, 'line %d: missing ; at end of line' % self.line
             l = l.rstrip(';')
             args = l.split()
-            print('line %d: %s' % (self.line, ' '.join(args)))
+            #print('line %d: %s' % (self.line, ' '.join(args)))
             funcs.get(args[0], self.cmd_unknown)(args)
         f.close()
-        return self.errors
 
 #------------------------------------------------------------------------------

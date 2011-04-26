@@ -130,6 +130,9 @@ class bits:
     def __eq__(self, x):
         return (self.n == x.n) and (self.val == x.val)
 
+    def __ne__(self, x):
+        return not ((self.n == x.n) and (self.val == x.val))
+
     def __str__(self):
         return '(%d) %x' % (self.n, self.val)
 

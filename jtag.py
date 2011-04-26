@@ -5,7 +5,6 @@ JTAG Chain Controller
 """
 #-----------------------------------------------------------------------------
 
-import array
 import bits
 
 #-----------------------------------------------------------------------------
@@ -33,67 +32,54 @@ def lookup_device(x):
     for (idcode, name, irlen, mask) in device_table:
         if x & mask == idcode:
             return (name, irlen, mask)
-    return ('Unknown', 0, 0xffffffff)
+    return ('unknown', 0, 0xffffffff)
 
 #-----------------------------------------------------------------------------
 
-class device:
-    """JTAG Device"""
-    def __init__(self, jtag, idx, idcode, name, irlen):
-        self.jtag = jtag
-        self.idx = idx
-        self.idcode = idcode
-        self.name = name
-        self.irlen = irlen
+class jtag:
 
-    def wr_ir(self, wr):
-        self.jtag.wr_ir(self, wr)
-
-    def rw_ir(self, wr, rd):
-        self.jtag.rw_ir(self, wr, rd)
-
-    def wr_dr(self, wr):
-        self.jtag.wr_dr(self, wr)
-
-    def rw_dr(self, wr, rd):
-        self.jtag.rw_dr(self, wr, rd)
-
-    def __str__(self):
-        return 'device %d: idcode 0x%08x irlen %d bits - %s' % (self.idx, self.idcode, self.irlen, self.name)
-
-#-----------------------------------------------------------------------------
-
-class chain:
-    """JTAG Chain Controller"""
-    def __init__(self, idx, driver):
-        self.idx = idx
+    def __init__(self, driver):
         self.driver = driver
-        self.devices = []
 
-    def scan(self):
-        """examine the JTAG chain and identify what we have"""
+    def scan(self, idcode_x):
+        """try to find the device with idcode on the jtag chain"""
         self.driver.reset_jtag()
         self.ndevs = self.num_devices()
-        self.irlen = self.ir_length()
-        unknown = []
+        self.irlen_total = self.ir_length()
+        self.idcode = 0
+        self.ndevs_before = 0
+        self.ndevs_after = 0
+        self.irlen_before = 0
+        self.irlen_after = 0
+        found = False
         for idcode in self.reset_idcodes():
             (name, irlen, mask) = lookup_device(idcode)
-            dev = device(self, len(self.devices), idcode & mask, name, irlen)
-            self.devices.append(dev)
-            if name == 'Unknown':
-                unknown.append(dev)
-        # assume that a single unknown device makes up any irlen shortfall
-        delta = self.irlen - self.device_ir_length()
-        if (delta > 0) and (len(unknown) == 1):
-            unknown[0].irlen = delta
+            if name == 'unknown':
+                raise Error, 'unknown device on jtag chain - idcode 0x%08x' % idcode
+            if idcode_x == idcode & mask:
+                found = True
+                self.irlen = irlen
+                self.idcode = idcode
+                self.name = name
+                continue
+            if not found:
+                self.irlen_before += irlen
+                self.ndevs_before += 1
+            else:
+                self.irlen_after += irlen
+                self.ndevs_after += 1
+        if self.idcode == 0:
+            raise Error, 'unable to find device on jtag chain - idcode 0x%08x' % self.idcode
 
-    def reset_target(self):
-        """reset the target system"""
-        self.driver.reset_target()
-
-    def reset_jtag(self):
-        """set all JTAG devices in the chain to the run-test/idle state"""
-        self.driver.reset_jtag()
+    def num_devices(self):
+        """return the number of JTAG devices in the chain"""
+        # put every device into bypass mode (IR = all 1's)
+        tdi = bits.bits()
+        tdi.ones(_flush_size)
+        self.driver.scan_ir(tdi)
+        # now each DR is a single bit
+        # the DR chain length is the number of devices
+        return self.dr_length()
 
     def chain_length(self, scan):
         """return the length of the JTAG chain"""
@@ -123,23 +109,6 @@ class chain:
         """return the length of the ir chain"""
         return self.chain_length(self.driver.scan_ir)
 
-    def device_ir_length(self):
-        """return the summed ir length of the devices on the chain"""
-        irlen = 0
-        for device in self.devices:
-            irlen += device.irlen
-        return irlen
-
-    def num_devices(self):
-        """return the number of JTAG devices in the chain"""
-        # put every device into bypass mode (IR = all 1's)
-        tdi = bits.bits()
-        tdi.ones(_flush_size)
-        self.driver.scan_ir(tdi)
-        # now each DR is a single bit
-        # the DR chain length is the number of devices
-        return self.dr_length()
-
     def reset_idcodes(self):
         """return a tuple of the idcodes for the JTAG chain"""
         # a JTAG reset leaves DR as the 32 bit idcode for each device.
@@ -149,102 +118,70 @@ class chain:
         self.driver.scan_dr(tdi, tdo)
         return tdo.scan((_idcode_length, ) * self.ndevs)
 
-    def wr_ir(self, dev, wr):
+    def wr_ir(self, wr):
         """
         write to IR for a device
-        dev: the device that needs ir written
         wr: the bitbuffer to be written to ir for this device
         note - other devices will be placed in bypass mode (ir = all 1's)
         """
         tdi = bits.bits()
-        for device in self.devices:
-            if dev == device:
-                tdi.append(wr)
-            else:
-                tdi.append_ones(device.irlen)
+        tdi.append_ones(self.irlen_before)
+        tdi.append(wr)
+        tdi.append_ones(self.irlen_after)
         self.driver.scan_ir(tdi)
 
-    def rw_ir(self, dev, wr, rd):
+    def rw_ir(self, wr, rd):
         """
         read/write IR for a device
-        dev: the device that needs dr read/written
         wr: bitbuffer to be written to ir for this device
         rd: bitbuffer to be read from ir for this device
         note - other devices are assumed to be in bypass mode
         """
         tdi = bits.bits()
-        before = 0
-        after = 0
-        found = False
-        for device in self.devices:
-            if dev == device:
-                tdi.append(wr)
-                found = True
-            else:
-                tdi.append_ones(device.irlen)
-                if not found:
-                    before += device.irlen
-                else:
-                    after += device.irlen
+        tdi.append_ones(self.irlen_before)
+        tdi.append(wr)
+        tdi.append_ones(self.irlen_after)
         self.driver.scan_ir(tdi, rd)
         # strip the ir bits from the bypassed devices
-        rd.drop_msb(before)
-        rd.drop_lsb(after)
+        rd.drop_msb(self.irlen_before)
+        rd.drop_lsb(self.irlen_after)
 
-    def wr_dr(self, dev, wr):
+    def wr_dr(self, wr):
         """
         write to DR for a device
-        dev: the device that needs dr written
         wr: bitbuffer to be written to dr for this device
         note - other devices are assumed to be in bypass mode
         """
         tdi = bits.bits()
-        for device in self.devices:
-            if dev == device:
-                tdi.append(wr)
-            else:
-                tdi.append_ones(1)
+        tdi.append_ones(self.ndevs_before)
+        tdi.append(wr)
+        tdi.append_ones(self.ndevs_after)
         self.driver.scan_dr(tdi)
 
-    def rw_dr(self, dev, wr, rd):
+    def rw_dr(self, wr, rd):
         """
         read/write DR for a device
-        dev: the device that needs dr read/written
         wr: bitbuffer to be written to dr for this device
         rd: bitbuffer to be read from dr for this device
         note - other devices are assumed to be in bypass mode
         """
         tdi = bits.bits()
-        before = 0
-        after = 0
-        found = False
-        for device in self.devices:
-            if dev == device:
-                tdi.append(wr)
-                found = True
-            else:
-                tdi.append_ones(1)
-                if not found:
-                    before += 1
-                else:
-                    after += 1
+        tdi.append_ones(self.ndevs_before)
+        tdi.append(wr)
+        tdi.append_ones(self.ndevs_after)
         self.driver.scan_dr(tdi, rd)
         # strip the dr bits from the bypassed devices
-        rd.drop_msb(before)
-        rd.drop_lsb(after)
+        rd.drop_msb(self.ndevs_before)
+        rd.drop_lsb(self.ndevs_after)
 
     def __str__(self):
         """return a string describing the jtag chain"""
-        err_str = ''
-        title_str = 'JTAG chain %d\n' % self.idx
-        ir_str = 'chain IR length: %d bits\n' % self.irlen
-        drv_str = 'driver: %s\n' % self.driver
-        if len(self.devices) ==0:
-            dev_str = 'no devices\n'
-        else:
-            dev_str = '\n'.join([str(device) for device in self.devices])
-            if self.device_ir_length() != self.irlen:
-                err_str = '\nassumed/actual IR length mismatch: %d/%d bits' % (self.device_ir_length(), self.irlen)
-        return ''.join([title_str, drv_str, ir_str, dev_str, err_str])
+        s = []
+        s.append('jtag: %s' % self.driver)
+        s.append('device: idcode 0x%08x ir length %d bits - %s' % (self.idcode, self.irlen, self.name))
+        if self.ndevs > 1:
+            s.append('chain: %d devices, %d before %d after' % (self.ndevs, self.ndevs_before, self.ndevs_after))
+            s.append('chain: %d ir bits total, %d before %d after' % (self.irlen_total, self.irlen_before, self.irlen_after))
+        return '\n'.join(s)
 
 #-----------------------------------------------------------------------------

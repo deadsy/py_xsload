@@ -21,8 +21,8 @@ class svf:
 
     def parse_tdi_tdo(self, args):
         """
-            parse: length TDI (tdi) SMASK (smask) [TDO (tdo) MASK (mask)]
-            return the values in a dictionary
+        parse: length TDI (tdi) SMASK (smask) [TDO (tdo) MASK (mask)]
+        return the values in a dictionary
         """
         vals = dict(zip(args[1::2], [utils.unparen(v) for v in args[2::2]]))
         vals['NBITS'] = int(args[0])
@@ -36,7 +36,9 @@ class svf:
             n = vals['NBITS']
             tdo_expected = bits.bits(n, vals['TDO'])
             if vals.has_key('MASK'):
-                tdo &= bits.bits(n, vals['MASK'])
+                mask = bits.bits(n, vals['MASK'])
+                tdo &= mask
+                tdo_expected &= mask
             return tdo == tdo_expected
         else:
             return True
@@ -59,7 +61,7 @@ class svf:
     def cmd_frequency(self, args):
         if args[2] != 'HZ':
             self.errors.append('line %d: unrecognized %s unit - "%s"' % (self.line, args[0], args[2]))
-        self.tck_period = 1 / float(args[1])
+        self.tck_period = 1.0 / float(args[1])
         return True
 
     def cmd_sdr_sir(self, args):
@@ -77,8 +79,7 @@ class svf:
         """command: RUNTEST run_count TCK"""
         if args[2] != 'TCK':
             self.errors.append('line %d: unrecognized %s unit - "%s"' % (self.line, args[0], args[2]))
-        print self.tck_period * int(args[1])
-        time.sleep(self.tck_period * int(args[1]))
+        time.sleep(2.0 * self.tck_period * int(args[1]))
         return True
 
     def playback(self):
@@ -112,7 +113,7 @@ class svf:
             l = l.rstrip(';')
             args = l.split()
             print('line %d: %s' % (self.line, ' '.join(args)))
-            print funcs.get(args[0], self.cmd_unknown)(args)
+            funcs.get(args[0], self.cmd_unknown)(args)
         f.close()
         return self.errors
 

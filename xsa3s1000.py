@@ -64,7 +64,7 @@ class cpld_jtag:
         return ((self.io.rd_status() >> _CPLD_TDO_BIT) & 1) ^ 1
 
     def __str__(self):
-        return '%s (xsa3s1000)' % str(self.io)
+        return '%s (xsa3s1000 cpld)' % str(self.io)
 
 #-----------------------------------------------------------------------------
 
@@ -76,17 +76,12 @@ class board:
 
     def cpld_init(self):
         """setup the cpld access"""
-        driver = bitbang.jtag_driver(cpld_jtag(pport.io(0)))
-        chain = jtag.chain(0, driver)
-        chain.scan()
+        chain = jtag.jtag(bitbang.jtag_driver(cpld_jtag(pport.io(0))))
+        chain.scan(jtag.IDCODE_XC9572XL)
         # the cpld should be the 1 and only device on the chain
-        if len(chain.devices) != 1:
-            raise Error, 'wrong number of devices on cpld jtag chain (is %d, expected 1)' % len(chain.devices)
-        device = chain.devices[0]
-        # check the cpld idcode
-        if device.idcode != jtag.IDCODE_XC9572XL:
-            raise Error, 'wrong idcode for cpld (is 0x%08x, expected 0x%08x)' % (device.idcode, jtag.IDCODE_XC9572XL)
-        self.cpld = xc9500.xc9500(device)
+        if chain.ndevs != 1:
+            raise Error, 'wrong number of devices on cpld jtag chain (is %d, expected 1)' % chain.ndevs
+        self.cpld = xc9500.xc9500(chain)
 
     def cpld_configure(self, filename):
         """configure the cpld with an svf file"""

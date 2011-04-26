@@ -84,7 +84,7 @@ class bits:
         """shift right"""
         bit_out = self.val & 1
         self.val >>= 1
-        self.val |= (bit_in << self.n)
+        self.val |= (bit_in << (self.n - 1))
         return bit_out
 
     def get(self):

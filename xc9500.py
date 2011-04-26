@@ -27,19 +27,19 @@ _IR_BYPASS = 0xff
 class xc9500:
     """Xilinx XC9500 CPLD"""
 
-    def __init__(self, device):
-        self.device = device
+    def __init__(self, jtag):
+        self.jtag = jtag
 
     def wr_ir(self, val):
         """write instruction register"""
         wr = bits.bits(_IR_LEN, val)
-        self.device.wr_ir(wr)
+        self.jtag.wr_ir(wr)
 
     def rd_dr(self, n):
         """read n bits from the current data register"""
         wr = bits.bits(n)
         rd = bits.bits(n)
-        self.device.rw_dr(wr, rd)
+        self.jtag.rw_dr(wr, rd)
         return rd.scan((n,))[0]
 
     def rd_usercode(self):
@@ -55,16 +55,16 @@ class xc9500:
     def scan_ir(self, tdi, tdo):
         """scan bits through the instruction register"""
         if tdo is None:
-            self.device.wr_ir(tdi)
+            self.jtag.wr_ir(tdi)
         else:
-            self.device.rw_ir(tdi, tdo)
+            self.jtag.rw_ir(tdi, tdo)
 
     def scan_dr(self, tdi, tdo):
         """scan bits through the current data register"""
         if tdo is None:
-            self.device.wr_dr(tdi)
+            self.jtag.wr_dr(tdi)
         else:
-            self.device.rw_dr(tdi, tdo)
+            self.jtag.rw_dr(tdi, tdo)
 
     def configure(self, filename):
         """configure the device with an svf file"""
@@ -72,6 +72,6 @@ class xc9500:
         f.playback()
 
     def __str__(self):
-        return str(self.device)
+        return str(self.jtag)
 
 #------------------------------------------------------------------------------

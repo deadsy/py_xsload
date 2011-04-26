@@ -51,18 +51,15 @@ class jtag_driver:
                 self.clock_data_o(0, tdi.shr())
             # last bit
             self.clock_data_o(1, tdi.shr())
-            # shift-x -> run-test/idle
-            self.clock_tms(1)
-            self.clock_tms(0)
         else:
             tdo.zeroes(tdi.n)
             for i in range(tdi.n - 1):
                 tdo.shr(self.clock_data_io(0, tdi.shr()))
             # last bit
             tdo.shr(self.clock_data_io(1, tdi.shr()))
-            # shift-x -> run-test/idle
-            tdo.shr(self.clock_data_io(1, 0))
-            self.clock_tms(0)
+        # shift-x -> run-test/idle
+        self.clock_tms(1)
+        self.clock_tms(0)
 
     def scan_ir(self, tdi, tdo = None):
         """write (and possibly read) a bit stream through the IR in the JTAG chain"""

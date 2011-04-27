@@ -22,9 +22,11 @@ _idcode_length = 32
 # Device ID Codes and Lookup Table
 
 IDCODE_XC9572XL = 0x09604093
+IDCODE_XC3S1000 = 0x01428093
 
 device_table = (
     (IDCODE_XC9572XL, 'Xilinx XC9572XL CPLD', 8, 0xfffffff),
+    (IDCODE_XC3S1000, 'Xilinx XC3S1000 FPGA', 6, 0xfffffff),
 )
 
 def lookup_device(x):
@@ -70,6 +72,8 @@ class jtag:
                 self.ndevs_after += 1
         if self.idcode == 0:
             raise Error, 'unable to find device on jtag chain - idcode 0x%08x' % self.idcode
+        if (self.irlen_before + self.irlen + self.irlen_after) != self.irlen_total:
+            raise Error, 'incorrect ir lengths - %d + (%d) + %d != %d' % (self.irlen_before, self.irlen, self.irlen_after, self.irlen_total)
 
     def num_devices(self):
         """return the number of JTAG devices in the chain"""

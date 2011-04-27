@@ -6,6 +6,7 @@ SVF File Interpreter
 #------------------------------------------------------------------------------
 
 import time
+import os
 
 import utils
 import bits
@@ -19,10 +20,21 @@ class Error(Exception):
 
 class svf:
 
-    def __init__(self, filename, device):
+    def __init__(self, filename, jtag):
         self.filename = filename
-        self.device = device
+        self.jtag = jtag
         self.tck_period = 0.0
+
+    def cmd_state(self, args):
+        """transition through specific jtag states"""
+        func = {
+            'RESET': self.jtag.driver.state_reset,
+            'IDLE': self.jtag.driver.state_idle,
+        }
+        for state in args[1:]:
+            if not func.has_key(state):
+                raise Error, 'line %d: unknown jtag state %s' % (self.line, state)
+            func[state]()
 
     def parse_tdi_tdo(self, args):
         """
@@ -65,16 +77,32 @@ class svf:
             raise Error, 'line %d: unrecognized %s unit - "%s"' % (self.line, args[0], args[2])
         self.tck_period = 1.0 / float(args[1])
 
-    def cmd_sdr_sir(self, args):
-        """command: SDR/SIR length TDI (tdi) SMASK (smask) [TDO (tdo) MASK (mask)]"""
+    def cmd_sir(self, args):
+        """command: SIR length TDI (tdi) SMASK (smask) [TDO (tdo) MASK (mask)]"""
         vals = self.parse_tdi_tdo(args[1:])
         tdi = bits.bits(vals['NBITS'], vals['TDI'])
-        tdo = (None, bits.bits())[vals.has_key('TDO')]
-        if args[0] == 'SDR':
-            self.device.scan_dr(tdi, tdo)
+        if vals.has_key('TDO'):
+            tdo = bits.bits()
+            self.jtag.rw_ir(tdi, tdo)
+            self.validate_tdo(tdo, vals)
         else:
-            self.device.scan_ir(tdi, tdo)
-        self.validate_tdo(tdo, vals)
+            self.jtag.wr_ir(tdi)
+
+    def cmd_sdr(self, args):
+        """command: SDR length TDI (tdi) SMASK (smask) [TDO (tdo) MASK (mask)]"""
+        vals = self.parse_tdi_tdo(args[1:])
+        tdi = bits.bits(vals['NBITS'], vals['TDI'])
+        if vals.has_key('TDO'):
+            tdo = bits.bits()
+            self.jtag.rw_dr(tdi, tdo)
+            self.validate_tdo(tdo, vals)
+        else:
+            self.jtag.wr_dr(tdi)
+
+    def cmd_end_state(self, args):
+        """specify the ending state for the sdr/sir command"""
+        if args[1] != 'IDLE':
+            raise Error, 'line %d: unrecognized %s value - "%s"' % (self.line, args[0], args[1])
 
     def cmd_runtest(self, args):
         """command: RUNTEST run_count TCK"""
@@ -82,22 +110,28 @@ class svf:
             raise Error, 'line %d: unrecognized %s unit - "%s"' % (self.line, args[0], args[2])
         time.sleep(2.0 * self.tck_period * int(args[1]))
 
+    def cmd_trst(self, args):
+        if not (args[1] in ('OFF', 'ON')):
+            raise Error, 'line %d: unrecognized %s value - "%s"' % (self.line, args[0], args[1])
+        self.jtag.driver.test_reset(args[1] == 'ON')
+
     def playback(self):
         """playback an svf file through the jtag device"""
         self.line = 0
+        progress = utils.progress(50, os.path.getsize(self.filename))
         f = open(self.filename, 'r')
         funcs = {
-            'SDR': self.cmd_sdr_sir,
+            'SDR': self.cmd_sdr,
             'HDR': self.cmd_chain,
             'TDR': self.cmd_chain,
-            'ENDDR': self.cmd_todo,
-            'SIR': self.cmd_sdr_sir,
+            'ENDDR': self.cmd_end_state,
+            'SIR': self.cmd_sir,
             'HIR': self.cmd_chain,
             'TIR': self.cmd_chain,
-            'ENDIR': self.cmd_todo,
+            'ENDIR': self.cmd_end_state,
             'RUNTEST': self.cmd_runtest,
-            'TRST': self.cmd_todo,
-            'STATE': self.cmd_todo,
+            'TRST': self.cmd_trst,
+            'STATE': self.cmd_state,
             'FREQUENCY': self.cmd_frequency,
         }
         for l in f:
@@ -111,6 +145,8 @@ class svf:
             args = l.split()
             #print('line %d: %s' % (self.line, ' '.join(args)))
             funcs.get(args[0], self.cmd_unknown)(args)
+            progress.update(f.tell())
+        progress.erase()
         f.close()
 
 #------------------------------------------------------------------------------

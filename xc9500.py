@@ -52,23 +52,9 @@ class xc9500:
         self.wr_ir(_IR_IDCODE)
         return self.rd_dr(_DR_IDCODE_LEN)
 
-    def scan_ir(self, tdi, tdo):
-        """scan bits through the instruction register"""
-        if tdo is None:
-            self.jtag.wr_ir(tdi)
-        else:
-            self.jtag.rw_ir(tdi, tdo)
-
-    def scan_dr(self, tdi, tdo):
-        """scan bits through the current data register"""
-        if tdo is None:
-            self.jtag.wr_dr(tdi)
-        else:
-            self.jtag.rw_dr(tdi, tdo)
-
     def configure(self, filename):
         """configure the device with an svf file"""
-        f = svf.svf(filename, self)
+        f = svf.svf(filename, self.jtag)
         f.playback()
 
     def __str__(self):

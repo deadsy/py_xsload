@@ -63,6 +63,11 @@ class cpld_jtag:
         """get the tdo bit"""
         return ((self.io.rd_status() >> _CPLD_TDO_BIT) & 1) ^ 1
 
+    def test_reset(self, val):
+        """control the test reset line"""
+        # don't have a ~trst line
+        pass
+
     def __str__(self):
         return '%s (xsa3s1000 cpld)' % str(self.io)
 

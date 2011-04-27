@@ -6,12 +6,18 @@ Bit Bang JTAG Driver - JTAG via simple single bit IO lines
 #------------------------------------------------------------------------------
 
 import logging
+import time
+
 import bits
 
 #------------------------------------------------------------------------------
 
 _log = logging.getLogger('bitbang')
 #_log.setLevel(logging.DEBUG)
+
+#------------------------------------------------------------------------------
+
+_TRST_TIME = 0.01
 
 #------------------------------------------------------------------------------
 
@@ -80,23 +86,39 @@ class jtag_driver:
         self.clock_tms(0)
         self.shift_data(tdi, tdo)
 
-    def reset_target(self):
+    def system_reset(self):
         """assert the ~SRST line to reset the target"""
-        _log.debug('jtag.reset_target()')
+        _log.debug('jtag.system_reset()')
         #TODO - pulse system reset line
         pass
+
+    def test_reset(self, val):
+        """control the test reset line"""
+        _log.debug('jtag.test_reset()')
+        self.io.test_reset(val)
+
+    def state_reset(self):
+        """goto the reset state"""
+        # any state -> reset
+        self.clock_tms(1)
+        self.clock_tms(1)
+        self.clock_tms(1)
+        self.clock_tms(1)
+        self.clock_tms(1)
+
+    def state_idle(self):
+        """goto the idle state"""
+        # any state -> run-test/idle
+        self.state_reset()
+        self.clock_tms(0)
 
     def reset_jtag(self):
         """reset the TAP of all JTAG devices in the chain to the run-test/idle state"""
         _log.debug('jtag.reset_jtag()')
-        # TODO - pulse test reset line
-        # any state -> run-test/idle
-        self.clock_tms(1)
-        self.clock_tms(1)
-        self.clock_tms(1)
-        self.clock_tms(1)
-        self.clock_tms(1)
-        self.clock_tms(0)
+        self.test_reset(True)
+        time.sleep(_TRST_TIME)
+        self.test_reset(False)
+        self.state_idle()
 
     def __str__(self):
         """return a string describing the device"""

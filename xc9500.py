@@ -54,10 +54,13 @@ class xc9500:
 
     def configure(self, filename):
         """configure the device with an svf file"""
+        print('configuring cpld with %s' % filename)
         f = svf.svf(filename, self.jtag)
         f.playback()
 
     def __str__(self):
-        return str(self.jtag)
+        s = []
+        s.append(str(self.jtag))
+        return '\n'.join(s)
 
 #------------------------------------------------------------------------------

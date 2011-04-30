@@ -10,6 +10,7 @@ import bitbang
 import pport
 import jtag
 import xc9500
+import spartan
 
 #-----------------------------------------------------------------------------
 
@@ -17,16 +18,21 @@ class Error(Exception):
     pass
 
 #-----------------------------------------------------------------------------
+# cpld/fpga configuration files
 
 _file_path = './bitfiles/XSA/3S1000/LPT/'
 
-_cpld_files = (
-    'dwnldpar.svf',
-    'erase.svf',
-    'fcnfg.svf',
-    'p3jtag.svf',
-    'p4jtag.svf',
-)
+USERCODE_DOWNLOAD =  0x3c343e21
+USERCODE_FCONFIG =  0x3c323e21
+USERCODE_P3JTAG =  0x70336a74
+USERCODE_P4JTAG =  0x70346a74
+
+_cpld_files = {
+    USERCODE_DOWNLOAD: 'dwnldpar.svf',
+    USERCODE_FCONFIG: 'fcnfg.svf',
+    USERCODE_P3JTAG: 'p3jtag.svf',
+    USERCODE_P4JTAG: 'p4jtag.svf',
+}
 
 _fpga_files = (
     'fintf.bit',
@@ -69,10 +75,10 @@ class cpld_jtag:
         pass
 
     def __str__(self):
-        return '%s (xsa3s1000 cpld)' % str(self.io)
+        return str(self.io)
 
 #-----------------------------------------------------------------------------
-# map the fpga jtag pins to the parallel port (needs p3jtag.svf in the cpld)
+# fpga parallel port to jtag interface (needs p3jtag.svf in the cpld)
 
 _FPGA_TDI = (1 << 0) # parallel port d0 - pin 2
 _FPGA_TCK = (1 << 1) # parallel port d1 - pin 3
@@ -108,7 +114,62 @@ class fpga_jtag:
         pass
 
     def __str__(self):
-        return '%s (xsa3s1000 fpga)' % str(self.io)
+        return str(self.io)
+
+#-----------------------------------------------------------------------------
+# fpga parallel port to select map interface (needs dwnldpar.svf in the cpld)
+# The "select map" configuration scheme is the Xilinx term for an fpga getting
+# configuration a byte at a time, clocked in by a host device.
+
+_FPGA_CCLK  = (1 << 0)  # parallel port d0
+_FPGA_PROGB = (1 << 7)  # parallel port d7
+_NYBBLE_SHIFT = 2       # parallel port d5,d4,d3,d2 - nybble data
+
+class fpga_smap:
+
+    def __init__(self, io):
+        self.io = io
+
+    def start(self):
+        """start the configuration process"""
+        self.io.wr_data(0)
+        self.io.wr_data(_FPGA_PROGB | _FPGA_CCLK)
+        time.sleep(0.030)
+
+    def wr(self, x):
+        """clock a configuration byte to the fpga"""
+        x = utils.reverse(x)
+        # upper nybble on falling edge of _FPGA_CCLK
+        val = _FPGA_PROGB | _FPGA_CCLK | ((x >> 4) << _NYBBLE_SHIFT)
+        self.io.wr_data(val)
+        val &= ~_FPGA_CCLK
+        self.io.wr_data(val)
+        # lower nybble on rising edge of _FPGA_CCLK
+        val = _FPGA_PROGB | ((x & 0x0f) << _NYBBLE_SHIFT)
+        self.io.wr_data(val)
+        val |= _FPGA_CCLK
+        self.io.wr_data(val)
+
+    def finish(self):
+        """finish the configuration process"""
+        for i in range(8):
+            self.io.wr_data(_FPGA_PROGB | _FPGA_CCLK)
+            self.io.wr_data(_FPGA_PROGB)
+        self.io.wr_data(_FPGA_PROGB | _FPGA_CCLK)
+
+
+#out:
+    
+    #~program
+    #~cs
+    #~write
+    #cclk
+    #d0-7
+    
+#in:
+    #~init
+    #done
+    #busy
 
 #-----------------------------------------------------------------------------
 
@@ -117,25 +178,35 @@ class board:
     def __init__(self, itf = None):
         # TODO - itf - interface selection
         self.pp = pport.io(0)
-
-    def cpld_init(self):
-        """setup the cpld access"""
+        # setup the cpld access
         chain = jtag.jtag(bitbang.jtag_driver(cpld_jtag(self.pp)))
         chain.scan(jtag.IDCODE_XC9572XL)
         self.cpld = xc9500.xc9500(chain)
+        self.fpga = spartan.xc3s1000(fpga_smap(self.pp))
 
-    def cpld_configure(self, filename):
+    def load_cpld(self, filename):
         """configure the cpld with an svf file"""
         self.cpld.configure(''.join((_file_path, filename)))
 
-    def fpga_init(self):
-        """setup the fpga access"""
-        chain = jtag.jtag(bitbang.jtag_driver(fpga_jtag(self.pp)))
-        chain.scan(jtag.IDCODE_XC3S1000)
-        print chain
-#        self.fpga = xc9500.xc9500(chain)
+    def load_fpga(self, filename):
+        """configure the fpga with a bit file"""
+        # we need dwnldpar.svf in the cpld
+        if self.cpld.rd_usercode() != USERCODE_DOWNLOAD:
+            self.cpld.configure(''.join((_file_path, _cpld_files[USERCODE_DOWNLOAD])))
+        self.fpga.configure(''.join((_file_path, filename)))
+
+    #def fpga_init(self):
+        #"""setup the fpga access"""
+        #chain = jtag.jtag(bitbang.jtag_driver(fpga_jtag(self.pp)))
+        #chain.scan(jtag.IDCODE_XC3S1000)
+        #print chain
 
     def __str__(self):
-        return str(self.cpld)
+        s = []
+        s.append('XSA3S1000 Board')
+        usercode = self.cpld.rd_usercode()
+        s.append('usercode: 0x%08x (%s)' % (usercode, _cpld_files.get(usercode, '??')))
+        s.append(str(self.cpld))
+        return '\n'.join(s)
 
 #-----------------------------------------------------------------------------

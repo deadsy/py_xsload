@@ -13,8 +13,7 @@ import xsa3s1000
 def main():
     b = xsa3s1000.board()
     print b
-    b.load_fpga('x')
-
+    b.load_fpga('xessdemo.bit')
 
 #------------------------------------------------------------------------------
 

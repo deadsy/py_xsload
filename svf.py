@@ -118,7 +118,7 @@ class svf:
     def playback(self):
         """playback an svf file through the jtag device"""
         self.line = 0
-        progress = utils.progress(50, os.path.getsize(self.filename))
+        progress = utils.progress(300, os.path.getsize(self.filename))
         f = open(self.filename, 'r')
         funcs = {
             'SDR': self.cmd_sdr,

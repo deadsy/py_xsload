@@ -27,15 +27,15 @@ def reverse8(x):
 class progress:
     """percent complete and activity indication"""
 
-    def __init__(self, inc, size):
+    def __init__(self, div, size):
         """
         progress indicator
-        div = slash speed, larger is slower
+        div = slash speed
         nmax = maximum value, 100%
         """
         self.size = size
         self.n = 0
-        self.inc = inc
+        self.inc = size / div
         self.progress = ''
 
     def erase(self):

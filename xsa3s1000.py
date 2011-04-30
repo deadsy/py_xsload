@@ -6,11 +6,14 @@ See - http://www.xess.com/prods/prod035.php
 """
 #-----------------------------------------------------------------------------
 
+import time
+
 import bitbang
 import pport
 import jtag
 import xc9500
 import spartan
+import utils
 
 #-----------------------------------------------------------------------------
 
@@ -138,9 +141,9 @@ class fpga_smap:
 
     def wr(self, x):
         """clock a configuration byte to the fpga"""
-        x = utils.reverse(x)
+        x = utils.reverse8(x)
         # upper nybble on falling edge of _FPGA_CCLK
-        val = _FPGA_PROGB | _FPGA_CCLK | ((x >> 4) << _NYBBLE_SHIFT)
+        val = _FPGA_PROGB | _FPGA_CCLK | (((x & 0xf0) >> 4) << _NYBBLE_SHIFT)
         self.io.wr_data(val)
         val &= ~_FPGA_CCLK
         self.io.wr_data(val)
@@ -156,20 +159,6 @@ class fpga_smap:
             self.io.wr_data(_FPGA_PROGB | _FPGA_CCLK)
             self.io.wr_data(_FPGA_PROGB)
         self.io.wr_data(_FPGA_PROGB | _FPGA_CCLK)
-
-
-#out:
-    
-    #~program
-    #~cs
-    #~write
-    #cclk
-    #d0-7
-    
-#in:
-    #~init
-    #done
-    #busy
 
 #-----------------------------------------------------------------------------
 
@@ -193,7 +182,7 @@ class board:
         # we need dwnldpar.svf in the cpld
         if self.cpld.rd_usercode() != USERCODE_DOWNLOAD:
             self.cpld.configure(''.join((_file_path, _cpld_files[USERCODE_DOWNLOAD])))
-        self.fpga.configure(''.join((_file_path, filename)))
+        self.fpga.configure(filename)
 
     #def fpga_init(self):
         #"""setup the fpga access"""
@@ -204,9 +193,9 @@ class board:
     def __str__(self):
         s = []
         s.append('XSA3S1000 Board')
+        s.append(str(self.cpld))
         usercode = self.cpld.rd_usercode()
         s.append('usercode: 0x%08x (%s)' % (usercode, _cpld_files.get(usercode, '??')))
-        s.append(str(self.cpld))
         return '\n'.join(s)
 
 #-----------------------------------------------------------------------------

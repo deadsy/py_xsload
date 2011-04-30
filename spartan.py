@@ -17,8 +17,7 @@ class xc3s1000:
     def configure(self, filename):
         """configure the device with a bit file"""
         print('configuring fpga with %s' % filename)
-        f = bitfile.bitfile(filename, self.smap)
-        f.load()
+        bitfile.load(filename, self.smap)
 
 #-----------------------------------------------------------------------------
 

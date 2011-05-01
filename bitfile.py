@@ -5,8 +5,6 @@ Bitfile Loader
 """
 #------------------------------------------------------------------------------
 
-import time
-import os
 import struct
 
 import utils

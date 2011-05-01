@@ -137,7 +137,8 @@ class fpga_smap:
         """start the configuration process"""
         self.io.wr_data(0)
         self.io.wr_data(_FPGA_PROGB | _FPGA_CCLK)
-        time.sleep(0.030)
+        # delay 30ms after progb pin goes high
+        time.sleep(30e-3)
 
     def wr(self, x):
         """clock a configuration byte to the fpga"""
@@ -159,6 +160,8 @@ class fpga_smap:
             self.io.wr_data(_FPGA_PROGB | _FPGA_CCLK)
             self.io.wr_data(_FPGA_PROGB)
         self.io.wr_data(_FPGA_PROGB | _FPGA_CCLK)
+        # delay 10ms to allow the fpga to initialise
+        time.sleep(10e-3)
 
 #-----------------------------------------------------------------------------
 

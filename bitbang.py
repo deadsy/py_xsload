@@ -48,7 +48,7 @@ class jtag_driver:
 
     def shift_data(self, tdi, tdo):
         """
-        write (and possibly read) a bit stream from the JTAGkey
+        write (and possibly read) a bit stream from JTAG
         tdi - bit buffer of data to be written to the JTAG TDI pin
         tdo - bit buffer for the data read from the JTAG TDO pin (optional)
         """

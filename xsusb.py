@@ -51,9 +51,6 @@ _CMD_TAP_SEQ            = 0x4f # Send multiple TMS & TDI bits while receiving mu
 _CMD_FLASH_ONOFF        = 0x50 # Enable/disable the FPGA configuration flash.
 _CMD_RESET              = 0xff # Cause a power-on reset.
 
-# command response lengths
-_CMD_INFO_LEN = 32
-
 #------------------------------------------------------------------------------
 # other usb defines
 
@@ -91,25 +88,60 @@ class xsusb:
         self.handle.claimInterface(0)
         self.handle.resetEndpoint(usb.ENDPOINT_OUT + 1)
         self.handle.resetEndpoint(usb.ENDPOINT_IN + 1)
-        self.handle.reset() # ??
-        # get device information
+        self.handle.reset()
+        self.get_device_info()
+
+    def get_device_info(self):
+        """get device information"""
         msg = utils.b2s((_CMD_INFO, 0))
         self.handle.bulkWrite(usb.ENDPOINT_OUT + 1, msg, _USB_TIMEOUT)
         try:
-            info = self.handle.bulkRead(usb.ENDPOINT_IN + 1, _CMD_INFO_LEN, _USB_TIMEOUT)
+            info = self.handle.bulkRead(usb.ENDPOINT_IN + 1, 32, _USB_TIMEOUT)
         except usb.USBError:
-            self.reset()
+            self.power_cycle()
             raise Error, 'unable to read device information'
-        self.info = info
+        # validate the response and extract fields
+        if sum(info) & 0xff != 0:
+            raise Error, 'bad checksum on device information'
+        # the product name is a null terminated string
+        name = info[5:]
+        name = name[:name.index(0)]
+        self.name = utils.b2s(name) 
+        if self.name != 'XuLA':
+            raise Error, 'invalid product name: is "%s" expected "XuLA"' % self.name
+        # grab the information fields
+        self.pid = (info[1] << 8) | info[2]
+        self.version = '%d.%d' % info[3:5]
 
-    def reset(self):
-        print 'resetting'
+    def power_cycle(self):
+        """reset the microcontroller of the usb device"""
         msg = utils.b2s((_CMD_RESET,) + (0,) * 31)
         self.handle.bulkWrite(usb.ENDPOINT_OUT + 1, msg, _USB_TIMEOUT)
         time.sleep(4)
 
+    def clock_tms(self, tms):
+        """clock out a tms bit"""
+        msg = utils.b2s((_CMD_TMS_TDI, tms))
+        self.handle.bulkWrite(usb.ENDPOINT_OUT + 1, msg, _USB_TIMEOUT)
+
+    def clock_data_io(self, tms, tdi):
+        """clock out tdi bit, sample tdo bit"""
+        msg = utils.b2s((_CMD_TMS_TDI_TDO, (tdi << 1) | tms))
+        self.handle.bulkWrite(usb.ENDPOINT_OUT + 1, msg, _USB_TIMEOUT)
+        rx = self.handle.bulkRead(usb.ENDPOINT_IN + 1, 2, _USB_TIMEOUT)
+        return (rx[1] >> 2) & 1
+
+    def clock_data_o(self, tms, tdi):
+        """clock out tdi bit"""
+        msg = utils.b2s((_CMD_TMS_TDI, (tdi << 1) | tms))
+        self.handle.bulkWrite(usb.ENDPOINT_OUT + 1, msg, _USB_TIMEOUT)
+
     def __del__(self):
         self.handle.releaseInterface()
+
+    def __str__(self):
+        return '%s version %s/%d' % (self.name, self.version, self.pid)
+
 
 #------------------------------------------------------------------------------
 
@@ -118,35 +150,58 @@ class jtag_driver:
     def __init__(self, io):
         self.io = io
 
+    def shift_data(self, tdi, tdo):
+        """
+        write (and possibly read) a bit stream from JTAG
+        tdi - bit buffer of data to be written to the JTAG TDI pin
+        tdo - bit buffer for the data read from the JTAG TDO pin (optional)
+        """
+        if tdo is None:
+            for i in range(tdi.n - 1):
+                self.io.clock_data_o(0, tdi.shr())
+            # last bit
+            self.io.clock_data_o(1, tdi.shr())
+        else:
+            tdo.zeroes(tdi.n)
+            for i in range(tdi.n - 1):
+                tdo.shr(self.io.clock_data_io(0, tdi.shr()))
+            # last bit
+            tdo.shr(self.io.clock_data_io(1, tdi.shr()))
+        # shift-x -> run-test/idle
+        self.io.clock_tms(1)
+        self.io.clock_tms(0)
+
     def scan_ir(self, tdi, tdo = None):
         """write (and possibly read) a bit stream through the IR in the JTAG chain"""
         _log.debug('jtag.scan_ir()')
         ## run-test/idle -> shift-ir
-        #self.clock_tms(1)
-        #self.clock_tms(1)
-        #self.clock_tms(0)
-        #self.clock_tms(0)
-        #self.shift_data(tdi, tdo)
+        [self.io.clock_tms(x) for x in (1,1,0,0)]
+        self.shift_data(tdi, tdo)
 
     def scan_dr(self, tdi, tdo = None):
         """write (and possibly read) a bit stream through the DR in the JTAG chain"""
         _log.debug('jtag.scan_dr()')
         ## run-test/idle -> shift-dr
-        #self.clock_tms(1)
-        #self.clock_tms(0)
-        #self.clock_tms(0)
-        #self.shift_data(tdi, tdo)
+        [self.io.clock_tms(x) for x in (1,0,0)]
+        self.shift_data(tdi, tdo)
+
+    def state_reset(self):
+        """goto the reset state"""
+        # any state -> reset
+        [self.io.clock_tms(x) for x in (1,1,1,1,1)]
+
+    def state_idle(self):
+        """goto the idle state"""
+        # any state -> run-test/idle
+        [self.io.clock_tms(x) for x in (1,1,1,1,1,0)]
 
     def reset_jtag(self):
         """reset the TAP of all JTAG devices in the chain to the run-test/idle state"""
         _log.debug('jtag.reset_jtag()')
-        #self.test_reset(True)
-        #time.sleep(_TRST_TIME)
-        #self.test_reset(False)
-        #self.state_idle()
+        self.state_idle()
 
     def __str__(self):
         """return a string describing the device"""
-        return 'xsusb'
+        return str(self.io)
 
 #------------------------------------------------------------------------------

@@ -90,7 +90,7 @@ class xsusb:
 
     def usb_txrx(self, tx, rx_bytes = 0, check_cmd = False):
         """tx and/or rx usb packets"""
-        if len(tx):
+        if tx and len(tx):
             self.handle.bulkWrite(usb.ENDPOINT_OUT + 1, tx, _USB_TIMEOUT)
         if rx_bytes:
             rx = self.handle.bulkRead(usb.ENDPOINT_IN + 1, rx_bytes, _USB_TIMEOUT)
@@ -160,16 +160,20 @@ class jtag_driver:
         tdi - bit buffer of data to be written to the JTAG TDI pin
         tdo - bit buffer for the data read from the JTAG TDO pin (optional)
         """
-        # build the command message
         n = len(tdi)
-        cmd = [0, n & 0xff,  (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]
-        if tdo is None:
+        cmd = [0, n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]
+        if (tdi.val != 0) and (tdo is None):
             cmd[0] = _CMD_TDI
-            self.io.usb_txrx(utils.b2s(cmd))
+            self.io.usb_txrx(utils.b2s(cmd), 0, True)
             self.io.usb_txrx(utils.b2s(tdi.get()))
-        else:
+        elif (tdi.val == 0) and (tdo is not None):
+            cmd[0] = _CMD_TDO
+            self.io.usb_txrx(utils.b2s(cmd), 0, True)
+            rx = self.io.usb_txrx(None, (n + 7)/8)
+            tdo.set(n, rx)
+        elif (tdi.val != 0) and (tdo is not None):
             cmd[0] = _CMD_TDI_TDO
-            self.io.usb_txrx(utils.b2s(cmd))
+            self.io.usb_txrx(utils.b2s(cmd), 0, True)
             rx = self.io.usb_txrx(utils.b2s(tdi.get()), (n + 7)/8)
             tdo.set(n, rx)
         # shift-x -> run-test/idle

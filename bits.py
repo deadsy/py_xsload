@@ -76,6 +76,7 @@ class bits:
         """drop the most significant n bits"""
         if n < self.n:
             self.n -= n
+            self.val &= ((1 << self.n) - 1)
         else:
             self.n = 0
             self.val = 0

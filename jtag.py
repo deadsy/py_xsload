@@ -14,7 +14,7 @@ class Error(Exception):
 
 #-----------------------------------------------------------------------------
 
-_max_devices = 32
+_max_devices = 4
 _flush_size = _max_devices * 32
 _idcode_length = 32
 

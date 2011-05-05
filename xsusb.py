@@ -13,9 +13,6 @@ import utils
 
 #------------------------------------------------------------------------------
 
-_log = logging.getLogger('xsusb')
-#_log.setLevel(logging.DEBUG)
-
 class Error(Exception):
     pass
 
@@ -91,12 +88,22 @@ class xsusb:
         self.handle.reset()
         self.get_device_info()
 
+    def usb_txrx(self, tx, rx_bytes = 0, check_cmd = False):
+        """tx and/or rx usb packets"""
+        if len(tx):
+            self.handle.bulkWrite(usb.ENDPOINT_OUT + 1, tx, _USB_TIMEOUT)
+        if rx_bytes:
+            rx = self.handle.bulkRead(usb.ENDPOINT_IN + 1, rx_bytes, _USB_TIMEOUT)
+            if len(rx) != rx_bytes:
+                raise Error, 'received usb packet is too short'
+            if check_cmd and (ord(tx[0]) != rx[0]):
+                raise Error, 'command byte in response buffer does not match'
+            return rx
+
     def get_device_info(self):
         """get device information"""
-        msg = utils.b2s((_CMD_INFO, 0))
-        self.handle.bulkWrite(usb.ENDPOINT_OUT + 1, msg, _USB_TIMEOUT)
         try:
-            info = self.handle.bulkRead(usb.ENDPOINT_IN + 1, 32, _USB_TIMEOUT)
+            info = self.usb_txrx(utils.b2s((_CMD_INFO, 0)), 32, True)
         except usb.USBError:
             self.power_cycle()
             raise Error, 'unable to read device information'
@@ -115,33 +122,14 @@ class xsusb:
 
     def power_cycle(self):
         """reset the microcontroller of the usb device"""
-        msg = utils.b2s((_CMD_RESET,) + (0,) * 31)
-        self.handle.bulkWrite(usb.ENDPOINT_OUT + 1, msg, _USB_TIMEOUT)
+        self.usb_txrx(utils.b2s((_CMD_RESET,) + (0,) * 31))
         time.sleep(4)
-
-    def clock_tms(self, tms):
-        """clock out a tms bit"""
-        msg = utils.b2s((_CMD_TMS_TDI, tms))
-        self.handle.bulkWrite(usb.ENDPOINT_OUT + 1, msg, _USB_TIMEOUT)
-
-    def clock_data_io(self, tms, tdi):
-        """clock out tdi bit, sample tdo bit"""
-        msg = utils.b2s((_CMD_TMS_TDI_TDO, (tdi << 1) | tms))
-        self.handle.bulkWrite(usb.ENDPOINT_OUT + 1, msg, _USB_TIMEOUT)
-        rx = self.handle.bulkRead(usb.ENDPOINT_IN + 1, 2, _USB_TIMEOUT)
-        return (rx[1] >> 2) & 1
-
-    def clock_data_o(self, tms, tdi):
-        """clock out tdi bit"""
-        msg = utils.b2s((_CMD_TMS_TDI, (tdi << 1) | tms))
-        self.handle.bulkWrite(usb.ENDPOINT_OUT + 1, msg, _USB_TIMEOUT)
 
     def __del__(self):
         self.handle.releaseInterface()
 
     def __str__(self):
         return '%s version %s/%d' % (self.name, self.version, self.pid)
-
 
 #------------------------------------------------------------------------------
 
@@ -150,54 +138,67 @@ class jtag_driver:
     def __init__(self, io):
         self.io = io
 
+    def clock_tms(self, tms):
+        """clock out a tms bit"""
+        msg = utils.b2s((_CMD_TMS_TDI, tms))
+        self.io.usb_txrx(msg)
+
+    def clock_data_io(self, tms, tdi):
+        """clock out tdi bit, sample tdo bit"""
+        msg = utils.b2s((_CMD_TMS_TDI_TDO, (tdi << 1) | tms))
+        rx = self.io.usb_txrx(msg, 2, True)
+        return (rx[1] >> 2) & 1
+
+    def clock_data_o(self, tms, tdi):
+        """clock out tdi bit"""
+        msg = utils.b2s((_CMD_TMS_TDI, (tdi << 1) | tms))
+        self.io.usb_txrx(msg)
+
     def shift_data(self, tdi, tdo):
         """
         write (and possibly read) a bit stream from JTAG
         tdi - bit buffer of data to be written to the JTAG TDI pin
         tdo - bit buffer for the data read from the JTAG TDO pin (optional)
         """
+        # build the command message
+        n = len(tdi)
+        cmd = [0, n & 0xff,  (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]
         if tdo is None:
-            for i in range(tdi.n - 1):
-                self.io.clock_data_o(0, tdi.shr())
-            # last bit
-            self.io.clock_data_o(1, tdi.shr())
+            cmd[0] = _CMD_TDI
+            self.io.usb_txrx(utils.b2s(cmd))
+            self.io.usb_txrx(utils.b2s(tdi.get()))
         else:
-            tdo.zeroes(tdi.n)
-            for i in range(tdi.n - 1):
-                tdo.shr(self.io.clock_data_io(0, tdi.shr()))
-            # last bit
-            tdo.shr(self.io.clock_data_io(1, tdi.shr()))
+            cmd[0] = _CMD_TDI_TDO
+            self.io.usb_txrx(utils.b2s(cmd))
+            rx = self.io.usb_txrx(utils.b2s(tdi.get()), (n + 7)/8)
+            tdo.set(n, rx)
         # shift-x -> run-test/idle
-        self.io.clock_tms(1)
-        self.io.clock_tms(0)
+        [self.clock_tms(x) for x in (1,0)]
 
     def scan_ir(self, tdi, tdo = None):
         """write (and possibly read) a bit stream through the IR in the JTAG chain"""
-        _log.debug('jtag.scan_ir()')
         ## run-test/idle -> shift-ir
-        [self.io.clock_tms(x) for x in (1,1,0,0)]
+        [self.clock_tms(x) for x in (1,1,0,0)]
         self.shift_data(tdi, tdo)
 
     def scan_dr(self, tdi, tdo = None):
         """write (and possibly read) a bit stream through the DR in the JTAG chain"""
-        _log.debug('jtag.scan_dr()')
         ## run-test/idle -> shift-dr
-        [self.io.clock_tms(x) for x in (1,0,0)]
+        [self.clock_tms(x) for x in (1,0,0)]
         self.shift_data(tdi, tdo)
 
     def state_reset(self):
         """goto the reset state"""
         # any state -> reset
-        [self.io.clock_tms(x) for x in (1,1,1,1,1)]
+        [self.clock_tms(x) for x in (1,1,1,1,1)]
 
     def state_idle(self):
         """goto the idle state"""
         # any state -> run-test/idle
-        [self.io.clock_tms(x) for x in (1,1,1,1,1,0)]
+        [self.clock_tms(x) for x in (1,1,1,1,1,0)]
 
     def reset_jtag(self):
         """reset the TAP of all JTAG devices in the chain to the run-test/idle state"""
-        _log.debug('jtag.reset_jtag()')
         self.state_idle()
 
     def __str__(self):

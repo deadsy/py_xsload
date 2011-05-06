@@ -64,26 +64,20 @@ class jtag_driver:
             # last bit
             tdo.shr(self.clock_data_io(1, tdi.shr()))
         # shift-x -> run-test/idle
-        self.clock_tms(1)
-        self.clock_tms(0)
+        [self.clock_tms(x) for x in (1,0)]
 
     def scan_ir(self, tdi, tdo = None):
         """write (and possibly read) a bit stream through the IR in the JTAG chain"""
         _log.debug('jtag.scan_ir()')
         # run-test/idle -> shift-ir
-        self.clock_tms(1)
-        self.clock_tms(1)
-        self.clock_tms(0)
-        self.clock_tms(0)
+        [self.clock_tms(x) for x in (1,1,0,0)]
         self.shift_data(tdi, tdo)
 
     def scan_dr(self, tdi, tdo = None):
         """write (and possibly read) a bit stream through the DR in the JTAG chain"""
         _log.debug('jtag.scan_dr()')
         # run-test/idle -> shift-dr
-        self.clock_tms(1)
-        self.clock_tms(0)
-        self.clock_tms(0)
+        [self.clock_tms(x) for x in (1,0,0)]
         self.shift_data(tdi, tdo)
 
     def system_reset(self):
@@ -100,17 +94,12 @@ class jtag_driver:
     def state_reset(self):
         """goto the reset state"""
         # any state -> reset
-        self.clock_tms(1)
-        self.clock_tms(1)
-        self.clock_tms(1)
-        self.clock_tms(1)
-        self.clock_tms(1)
+        [self.clock_tms(x) for x in (1,1,1,1,1)]
 
     def state_idle(self):
         """goto the idle state"""
         # any state -> run-test/idle
-        self.state_reset()
-        self.clock_tms(0)
+        [self.clock_tms(x) for x in (1,1,1,1,1,0)]
 
     def reset_jtag(self):
         """reset the TAP of all JTAG devices in the chain to the run-test/idle state"""

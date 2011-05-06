@@ -14,6 +14,7 @@ import jtag
 import xc9500
 import spartan
 import utils
+import xsusb
 
 #-----------------------------------------------------------------------------
 
@@ -23,25 +24,21 @@ class Error(Exception):
 #-----------------------------------------------------------------------------
 # cpld/fpga configuration files
 
-_file_path = './bitfiles/XSA/3S1000/LPT/'
+_file_path = './bitfiles/XSA/3S1000/'
 
-USERCODE_DOWNLOAD =  0x3c343e21
+USERCODE_DOWNLOAD = 0x3c343e21
 USERCODE_FCONFIG =  0x3c323e21
-USERCODE_P3JTAG =  0x70336a74
-USERCODE_P4JTAG =  0x70346a74
+USERCODE_P3JTAG =   0x70336a74
+USERCODE_P4JTAG =   0x70346a74
+USERCODE_XESSJTAG = 0x3c353e21
 
 _cpld_files = {
-    USERCODE_DOWNLOAD: 'dwnldpar.svf',
-    USERCODE_FCONFIG: 'fcnfg.svf',
-    USERCODE_P3JTAG: 'p3jtag.svf',
-    USERCODE_P4JTAG: 'p4jtag.svf',
+    USERCODE_DOWNLOAD: 'LPT/dwnldpar.svf',
+    USERCODE_FCONFIG: 'LPT/fcnfg.svf',
+    USERCODE_P3JTAG: 'LPT/p3jtag.svf',
+    USERCODE_P4JTAG: 'LPT/p4jtag.svf',
+    USERCODE_XESSJTAG: 'USB/xessjtag.svf',
 }
-
-_fpga_files = (
-    'fintf.bit',
-    'ramintfc.bit',
-    'test_board.bit',
-)
 
 #-----------------------------------------------------------------------------
 # map the cpld jtag pins to the parallel port
@@ -202,3 +199,45 @@ class board:
         return '\n'.join(s)
 
 #-----------------------------------------------------------------------------
+
+class board2:
+
+
+    def __init__(self, itf = None):
+        # TODO - itf - interface selection
+        self.dev = xsusb.usb_dev(0)
+        self.ep1 = xsusb.usb_ep(self.dev, 1)
+        self.ep2 = xsusb.usb_ep(self.dev, 2)
+
+        # get the device information
+        info = self.ep1.get_device_info()
+        # the product version is a null terminated string
+        ver = info[1:]
+        ver = ver[:ver.index(0)]
+        self.version = utils.b2s(ver).strip() 
+
+        # setup the jtag interface
+        chain = jtag.jtag(xsusb.jtag_driver(self.ep2))
+        chain.scan(jtag.IDCODE_XC9572XL)
+        self.cpld = xc9500.xc9500(chain)
+        #self.cpld.configure('./bitfiles/XSA/3S1000/USB/xessjtag.svf')
+
+        #chain = jtag.jtag(xsusb.jtag_driver(self.ep1))
+        #chain.scan(jtag.IDCODE_XC3S1000)
+        #print chain
+
+
+    def __str__(self):
+        s = []
+        s.append('XSA3S1000 Board')
+        s.append('interface: xsusb %s' % self.version)
+        s.append(str(self.cpld))
+        usercode = self.cpld.rd_usercode()
+        s.append('usercode: 0x%08x (%s)' % (usercode, _cpld_files.get(usercode, '??')))
+        return '\n'.join(s)
+
+#-----------------------------------------------------------------------------
+
+
+
+

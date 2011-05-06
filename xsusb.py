@@ -83,60 +83,60 @@ def find_device(vid, pid, n):
 
 #------------------------------------------------------------------------------
 
-class xsusb:
+class usb_dev:
 
     def __init__(self, n = 0):
-        """find the xsusb device and get the device information"""
+        """find the usb device and get the device information"""
         dev = find_device(_VID, _PID, n)
         self.handle = dev.open()
         self.handle.claimInterface(0)
-        self.handle.resetEndpoint(usb.ENDPOINT_OUT + 1)
-        self.handle.resetEndpoint(usb.ENDPOINT_IN + 1)
         self.handle.reset()
-        self.get_device_info()
 
-    def usb_txrx(self, tx, rx_bytes = 0, check_cmd = False):
+    def reset_ep(self, ep):
+        self.handle.resetEndpoint(usb.ENDPOINT_OUT + ep)
+        self.handle.resetEndpoint(usb.ENDPOINT_IN + ep)
+
+    def usb_txrx(self, ep, tx, rx_bytes = 0, check_cmd = False):
         """tx and/or rx usb packets"""
         if tx and len(tx):
-            self.handle.bulkWrite(usb.ENDPOINT_OUT + 1, tx, _USB_TIMEOUT)
+            self.handle.bulkWrite(usb.ENDPOINT_OUT + ep, tx, _USB_TIMEOUT)
         if rx_bytes:
-            rx = self.handle.bulkRead(usb.ENDPOINT_IN + 1, rx_bytes, _USB_TIMEOUT)
+            rx = self.handle.bulkRead(usb.ENDPOINT_IN + ep, rx_bytes, _USB_TIMEOUT)
             if len(rx) != rx_bytes:
                 raise Error, 'received usb packet is too short'
             if check_cmd and (ord(tx[0]) != rx[0]):
                 raise Error, 'command byte in response buffer does not match'
             return rx
 
-    def get_device_info(self):
-        """get device information"""
-        try:
-            info = self.usb_txrx(utils.b2s((_CMD_INFO, 0)), 32, True)
-        except usb.USBError:
-            self.power_cycle()
-            raise Error, 'unable to read device information'
-        # validate the response and extract fields
-        if sum(info) & 0xff != 0:
-            raise Error, 'bad checksum on device information'
-        # the product name is a null terminated string
-        name = info[5:]
-        name = name[:name.index(0)]
-        self.name = utils.b2s(name) 
-        if self.name != 'XuLA':
-            raise Error, 'invalid product name: is "%s" expected "XuLA"' % self.name
-        # grab the information fields
-        self.pid = (info[1] << 8) | info[2]
-        self.version = '%d.%d' % info[3:5]
-
-    def power_cycle(self):
-        """reset the microcontroller of the usb device"""
-        self.usb_txrx(utils.b2s((_CMD_RESET,) + (0,) * 31))
-        time.sleep(4)
-
     def __del__(self):
         self.handle.releaseInterface()
 
-    def __str__(self):
-        return '%s version %s/%d' % (self.name, self.version, self.pid)
+#-----------------------------------------------------------------------------
+
+class usb_ep:
+
+    def __init__(self, dev, ep):
+        self.dev = dev
+        self.ep = ep
+        self.dev.reset_ep(self.ep)
+
+    def txrx(self, tx, rx_bytes = 0, check_cmd = False):
+        """tx/rx to endpoint"""
+        return self.dev.usb_txrx(self.ep, tx, rx_bytes, check_cmd)
+
+    def get_device_info(self):
+        """get device information"""
+        try:
+            info = self.dev.usb_txrx(self.ep, utils.b2s((_CMD_INFO, 0)), 32, True)
+        except usb.USBError:
+            self.power_cycle()
+            raise Error, 'unable to read device information'
+        return info
+
+    def power_cycle(self):
+        """reset the microcontroller of the usb device"""
+        self.dev.usb_txrx(self.ep, utils.b2s((_CMD_RESET,) + (0,) * 31))
+        time.sleep(4)
 
 #-----------------------------------------------------------------------------
 # tms bit sequences
@@ -166,7 +166,7 @@ class jtag_driver:
         n = bits[0]
         cmd = [_CMD_TAP_SEQ, n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]
         cmd.extend([_PUT_TDI_MASK | _PUT_TMS_MASK, bits[1], 0])
-        self.io.usb_txrx(utils.b2s(cmd))
+        self.io.txrx(utils.b2s(cmd))
 
     def shift_data(self, tdi, tdo):
         """
@@ -178,17 +178,17 @@ class jtag_driver:
         cmd = [0, n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]
         if (tdi.val != 0) and (tdo is None):
             cmd[0] = _CMD_TDI
-            self.io.usb_txrx(utils.b2s(cmd))
-            self.io.usb_txrx(utils.b2s(tdi.get()))
+            self.io.txrx(utils.b2s(cmd))
+            self.io.txrx(utils.b2s(tdi.get()))
         elif (tdi.val == 0) and (tdo is not None):
             cmd[0] = _CMD_TDO
-            self.io.usb_txrx(utils.b2s(cmd))
-            rx = self.io.usb_txrx(None, (n + 7)/8)
+            self.io.txrx(utils.b2s(cmd))
+            rx = self.io.txrx(None, (n + 7)/8)
             tdo.set(n, rx)
         elif (tdi.val != 0) and (tdo is not None):
             cmd[0] = _CMD_TDI_TDO
-            self.io.usb_txrx(utils.b2s(cmd))
-            rx = self.io.usb_txrx(utils.b2s(tdi.get()), (n + 7)/8)
+            self.io.txrx(utils.b2s(cmd))
+            rx = self.io.txrx(utils.b2s(tdi.get()), (n + 7)/8)
             tdo.set(n, rx)
         # exit-x -> run-test/idle
         self.clock_tms(_ex2rti)
@@ -204,6 +204,10 @@ class jtag_driver:
         ## run-test/idle -> shift-dr
         self.clock_tms(_rti2sdr)
         self.shift_data(tdi, tdo)
+
+    def test_reset(self, val):
+        """control the test reset line"""
+        pass
 
     def state_reset(self):
         """goto the reset state"""
@@ -221,6 +225,6 @@ class jtag_driver:
 
     def __str__(self):
         """return a string describing the device"""
-        return str(self.io)
+        return 'xsusb'
 
 #------------------------------------------------------------------------------

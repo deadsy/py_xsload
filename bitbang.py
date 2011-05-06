@@ -63,7 +63,7 @@ class jtag_driver:
                 tdo.shr(self.clock_data_io(0, tdi.shr()))
             # last bit
             tdo.shr(self.clock_data_io(1, tdi.shr()))
-        # shift-x -> run-test/idle
+        # exit-x -> run-test/idle
         [self.clock_tms(x) for x in (1,0)]
 
     def scan_ir(self, tdi, tdo = None):

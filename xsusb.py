@@ -48,6 +48,13 @@ _CMD_TAP_SEQ            = 0x4f # Send multiple TMS & TDI bits while receiving mu
 _CMD_FLASH_ONOFF        = 0x50 # Enable/disable the FPGA configuration flash.
 _CMD_RESET              = 0xff # Cause a power-on reset.
 
+# _CMD_TAP_SEQ flag bits
+_GET_TDO_MASK           = 0x01 # Set if gathering TDO bits.
+_PUT_TMS_MASK           = 0x02 # Set if TMS bits are included in the packets.
+_TMS_VAL_MASK           = 0x04 # Static value for TMS if PUT_TMS_MASK is cleared.
+_PUT_TDI_MASK           = 0x08 # Set if TDI bits are included in the packets.
+_TDI_VAL_MASK           = 0x10 # Static value for TDI if PUT_TDI_MASK is cleared.
+
 #------------------------------------------------------------------------------
 # other usb defines
 
@@ -131,6 +138,23 @@ class xsusb:
     def __str__(self):
         return '%s version %s/%d' % (self.name, self.version, self.pid)
 
+#-----------------------------------------------------------------------------
+# tms bit sequences
+
+def _tms_bits(bits):
+    """convert a left to right bit string to an mpsee (len, bits) tuple"""
+    l = list(bits)
+    # tms is shifted lsb first
+    l.reverse()
+    return (len(bits), int(''.join(l), 2) & 255)
+
+# pre-canned jtag state machine transitions
+_2reset = _tms_bits('11111') # any state -> reset
+_2rti = _tms_bits('111110')  # any state -> run-test/idle
+_rti2sir = _tms_bits('1100') # run-test/idle -> shift-ir
+_rti2sdr = _tms_bits('100')  # run-test/idle -> shift-dr
+_ex2rti = _tms_bits('10')    # exit-x -> run-test/idle
+
 #------------------------------------------------------------------------------
 
 class jtag_driver:
@@ -138,21 +162,11 @@ class jtag_driver:
     def __init__(self, io):
         self.io = io
 
-    def clock_tms(self, tms):
-        """clock out a tms bit"""
-        msg = utils.b2s((_CMD_TMS_TDI, tms))
-        self.io.usb_txrx(msg)
-
-    def clock_data_io(self, tms, tdi):
-        """clock out tdi bit, sample tdo bit"""
-        msg = utils.b2s((_CMD_TMS_TDI_TDO, (tdi << 1) | tms))
-        rx = self.io.usb_txrx(msg, 2, True)
-        return (rx[1] >> 2) & 1
-
-    def clock_data_o(self, tms, tdi):
-        """clock out tdi bit"""
-        msg = utils.b2s((_CMD_TMS_TDI, (tdi << 1) | tms))
-        self.io.usb_txrx(msg)
+    def clock_tms(self, bits):
+        n = bits[0]
+        cmd = [_CMD_TAP_SEQ, n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]
+        cmd.extend([_PUT_TDI_MASK | _PUT_TMS_MASK, bits[1], 0])
+        self.io.usb_txrx(utils.b2s(cmd))
 
     def shift_data(self, tdi, tdo):
         """
@@ -164,42 +178,42 @@ class jtag_driver:
         cmd = [0, n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]
         if (tdi.val != 0) and (tdo is None):
             cmd[0] = _CMD_TDI
-            self.io.usb_txrx(utils.b2s(cmd), 0, True)
+            self.io.usb_txrx(utils.b2s(cmd))
             self.io.usb_txrx(utils.b2s(tdi.get()))
         elif (tdi.val == 0) and (tdo is not None):
             cmd[0] = _CMD_TDO
-            self.io.usb_txrx(utils.b2s(cmd), 0, True)
+            self.io.usb_txrx(utils.b2s(cmd))
             rx = self.io.usb_txrx(None, (n + 7)/8)
             tdo.set(n, rx)
         elif (tdi.val != 0) and (tdo is not None):
             cmd[0] = _CMD_TDI_TDO
-            self.io.usb_txrx(utils.b2s(cmd), 0, True)
+            self.io.usb_txrx(utils.b2s(cmd))
             rx = self.io.usb_txrx(utils.b2s(tdi.get()), (n + 7)/8)
             tdo.set(n, rx)
-        # shift-x -> run-test/idle
-        [self.clock_tms(x) for x in (1,0)]
+        # exit-x -> run-test/idle
+        self.clock_tms(_ex2rti)
 
     def scan_ir(self, tdi, tdo = None):
         """write (and possibly read) a bit stream through the IR in the JTAG chain"""
         ## run-test/idle -> shift-ir
-        [self.clock_tms(x) for x in (1,1,0,0)]
+        self.clock_tms(_rti2sir)
         self.shift_data(tdi, tdo)
 
     def scan_dr(self, tdi, tdo = None):
         """write (and possibly read) a bit stream through the DR in the JTAG chain"""
         ## run-test/idle -> shift-dr
-        [self.clock_tms(x) for x in (1,0,0)]
+        self.clock_tms(_rti2sdr)
         self.shift_data(tdi, tdo)
 
     def state_reset(self):
         """goto the reset state"""
         # any state -> reset
-        [self.clock_tms(x) for x in (1,1,1,1,1)]
+        self.clock_tms(_2reset)
 
     def state_idle(self):
         """goto the idle state"""
         # any state -> run-test/idle
-        [self.clock_tms(x) for x in (1,1,1,1,1,0)]
+        self.clock_tms(_2rti)
 
     def reset_jtag(self):
         """reset the TAP of all JTAG devices in the chain to the run-test/idle state"""

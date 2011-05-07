@@ -9,8 +9,12 @@ import logging
 
 import xsa3s1000
 import xula
+import bitfile
 
 #------------------------------------------------------------------------------
+
+def main3():
+    bitfile.decode('xessdemo.bit')
 
 def main2():
     b = xsa3s1000.board2()
@@ -28,6 +32,6 @@ def main():
 #------------------------------------------------------------------------------
 
 logging.getLogger('').addHandler(logging.StreamHandler())
-main2()
+main3()
 
 #------------------------------------------------------------------------------

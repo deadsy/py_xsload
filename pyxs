@@ -1,0 +1,62 @@
+#!/usr/bin/python
+#------------------------------------------------------------------------------
+"""
+PyXS - Python based XSLoad tool for XESS FPGA Development Boards
+"""
+#------------------------------------------------------------------------------
+
+import getopt
+import sys
+import os
+
+import xsa3s1000
+
+#------------------------------------------------------------------------------
+
+_infile = 'fpga.bit'
+
+#------------------------------------------------------------------------------
+
+def Print_Usage(argv):
+    print 'Usage: %s [options]' % argv[0]
+    print 'Options:'
+    print '%-15s%s' % ('-i <file>', 'specify fpga configuration <file>')
+
+def error(msg, usage = False):
+    print msg
+    if usage:
+        Print_Usage(sys.argv)
+    sys.exit(1)
+
+#------------------------------------------------------------------------------
+
+def Process_Options(argv):
+    """process command line options"""
+    global _infile
+    try:
+        (opts, args) = getopt.getopt(sys.argv[1:], "i:")
+    except getopt.GetoptError, err:
+        error(str(err), True)
+    if args:
+        error('invalid arguments on command line', True)
+    for (opt, val) in opts:
+        if opt == '-i':
+            _infile = val
+
+    # validate command line arguments
+    if not os.path.exists(_infile):
+        error('fpga configuration file \'%s\' does not exist' % _infile, False)
+
+#------------------------------------------------------------------------------
+
+def main():
+    Process_Options(sys.argv)
+    b = xsa3s1000.board()
+    print b
+    b.load_fpga(_infile)
+
+#------------------------------------------------------------------------------
+
+main()
+
+#------------------------------------------------------------------------------

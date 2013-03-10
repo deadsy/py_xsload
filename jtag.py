@@ -24,11 +24,13 @@ _idcode_length = 32
 IDCODE_XC9572XL = 0x09604093
 IDCODE_XC3S1000 = 0x11428093
 IDCODE_XC3S200A = 0x02218093
+IDCODE_XC2C32A = 0x0
 
 device_table = (
     (IDCODE_XC9572XL, 'Xilinx XC9572XL CPLD', 8, 0xfffffff),
     (IDCODE_XC3S1000, 'Xilinx XC3S1000 FPGA', 6, 0xffffffff),
     (IDCODE_XC3S200A, 'Xilinx XC3S200A FPGA', 6, 0xfffffff),
+    (IDCODE_XC2C32A, 'Xilinx XC2C32A CPLD', 8, 0xffffffff),
 )
 
 def lookup_device(x):

@@ -11,6 +11,11 @@ import xc2c32a
 import ft2232
 
 #-----------------------------------------------------------------------------
+
+_VID = 0x0403
+_PID = 0x6010
+
+#-----------------------------------------------------------------------------
 # cpld configuration files
 
 _cpld_files = {}
@@ -22,7 +27,7 @@ class board:
     def __init__(self, itf = None):
         # TODO - itf - interface selection
         # setup the cpld access
-        chain = jtag.jtag(ft2232.jtag_driver())
+        chain = jtag.jtag(ft2232.jtag_driver(_VID, _PID, 1))
         chain.scan(jtag.IDCODE_XC2C32A)
         self.cpld = xc2c32a.xc2c32a(chain)
 

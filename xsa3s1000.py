@@ -11,7 +11,7 @@ import time
 import bitbang
 import pport
 import jtag
-import xc9500
+import cpld
 import spartan
 import utils
 import xsusb
@@ -170,7 +170,7 @@ class board:
         # setup the cpld access
         chain = jtag.jtag(bitbang.jtag_driver(cpld_jtag(self.pp)))
         chain.scan(jtag.IDCODE_XC9572XL)
-        self.cpld = xc9500.xc9500(chain)
+        self.cpld = cpld.xc9500(chain)
         self.fpga = spartan.xc3s1000(fpga_smap(self.pp))
 
     def load_cpld(self, filename):
@@ -214,12 +214,12 @@ class board2:
         # the product version is a null terminated string
         ver = info[1:]
         ver = ver[:ver.index(0)]
-        self.version = utils.b2s(ver).strip() 
+        self.version = utils.b2s(ver).strip()
 
         # setup the jtag interface
         chain = jtag.jtag(xsusb.jtag_driver(self.ep2))
         chain.scan(jtag.IDCODE_XC9572XL)
-        self.cpld = xc9500.xc9500(chain)
+        self.cpld = cpld.xc9500(chain)
         #self.cpld.configure('./bitfiles/XSA/3S1000/USB/xessjtag.svf')
 
         #chain = jtag.jtag(xsusb.jtag_driver(self.ep1))

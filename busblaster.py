@@ -43,7 +43,7 @@ GPIOH0..7 > Not connected
 #-----------------------------------------------------------------------------
 
 import jtag
-import xc2c32a
+import cpld
 import ft2232
 
 #-----------------------------------------------------------------------------
@@ -68,7 +68,7 @@ class board:
         # setup the cpld access
         chain = jtag.jtag(ft2232.jtag_driver(_VID, _PID, _cpld_itf))
         chain.scan(jtag.IDCODE_XC2C32A)
-        self.cpld = xc2c32a.xc2c32a(chain)
+        self.cpld = cpld.xc2c32a(chain)
 
     def load_cpld(self, filename):
         """configure the cpld with an svf file"""

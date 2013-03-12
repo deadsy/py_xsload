@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #------------------------------------------------------------------------------
 """
-Definitions and functions specific to the Xilinx XC9500 CPLDs
+Definitions and functions specific to the Xilinx CPLDs
 """
 #------------------------------------------------------------------------------
 
@@ -9,30 +9,16 @@ import bits
 import svf
 
 #------------------------------------------------------------------------------
-# IR/DR register lengths for XC9500
 
-_IR_LEN = 8
-_DR_IDCODE_LEN = 32
-_DR_USERCODE_LEN = 32
-
-#------------------------------------------------------------------------------
-# IR opcodes for XC9500
-
-_IR_USERCODE = 0xfd
-_IR_IDCODE = 0xfe
-_IR_BYPASS = 0xff
-
-#------------------------------------------------------------------------------
-
-class xc9500:
-    """Xilinx XC9500 CPLD"""
+class cpld:
+    """Xilinx CPLDs"""
 
     def __init__(self, jtag):
         self.jtag = jtag
 
     def wr_ir(self, val):
         """write instruction register"""
-        wr = bits.bits(_IR_LEN, val)
+        wr = bits.bits(self._IR_LEN, val)
         self.jtag.wr_ir(wr)
 
     def rd_dr(self, n):
@@ -44,13 +30,13 @@ class xc9500:
 
     def rd_usercode(self):
         """read and return the jtag usercode"""
-        self.wr_ir(_IR_USERCODE)
-        return self.rd_dr(_DR_USERCODE_LEN)
+        self.wr_ir(self._IR_USERCODE)
+        return self.rd_dr(self._DR_USERCODE_LEN)
 
     def rd_idcode(self):
         """read and return the jtag idcode"""
-        self.wr_ir(_IR_IDCODE)
-        return self.rd_dr(_DR_IDCODE_LEN)
+        self.wr_ir(self._IR_IDCODE)
+        return self.rd_dr(self._DR_IDCODE_LEN)
 
     def configure(self, filename):
         """configure the device with an svf file"""
@@ -62,5 +48,31 @@ class xc9500:
         s = []
         s.append(str(self.jtag))
         return '\n'.join(s)
+
+#------------------------------------------------------------------------------
+
+class xc9500(cpld):
+    """Xilinx XC9500 CPLD"""
+    # IR/DR register lengths
+    _IR_LEN = 8
+    _DR_IDCODE_LEN = 32
+    _DR_USERCODE_LEN = 32
+    # IR opcodes
+    _IR_USERCODE = 0xfd
+    _IR_IDCODE = 0xfe
+    _IR_BYPASS = 0xff
+
+#------------------------------------------------------------------------------
+
+class xc2c32a(cpld):
+    """Xilinx XC2C32A CPLD"""
+    # IR/DR register lengths
+    _IR_LEN = 8
+    _DR_IDCODE_LEN = 32
+    _DR_USERCODE_LEN = 32
+    # IR opcodes
+    _IR_USERCODE = 0xfd
+    _IR_IDCODE = 0x01
+    _IR_BYPASS = 0xff
 
 #------------------------------------------------------------------------------

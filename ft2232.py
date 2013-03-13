@@ -14,6 +14,7 @@ so I've only borrowed the ftdi specific portions.
 import time
 import array
 import sys
+import tap
 from ftdi import Ftdi
 
 #------------------------------------------------------------------------------
@@ -58,21 +59,17 @@ def _lsb(val): return val & 255
 #-----------------------------------------------------------------------------
 # tms bit sequences
 
-def _tms_bits(bits):
-    """convert a left to right bit string to an mpsee (len, bits) tuple"""
-    l = list(bits)
+def tms_mpsse(bits):
+    """convert a tms bit sequence to an mpsee (len, bits) tuple"""
+    n = len(bits)
+    assert (n > 0) and (n <= 7)
+    x = 0
     # tms is shifted lsb first
-    l.reverse()
+    for i in range(n - 1, -1, -1):
+        x = (x << 1) + bits[i]
     # only bits 0 thru 6 are shifted on tms - tdi is set to bit 7 (and is left there)
     # len = n means clock out n + 1 bits
-    return (len(bits) - 1, int(''.join(l), 2) & 127)
-
-# pre-canned jtag state machine transitions
-_x2rti = _tms_bits('111110')  # any state -> run-test/idle
-_x2r = _tms_bits('11111')  # any state -> reset
-_rti2sir = _tms_bits('1100') # run-test/idle -> shift-ir
-_rti2sdr = _tms_bits('100')  # run-test/idle -> shift-dr
-_sx2rti = _tms_bits('110')   # shift-x -> run-test/idle
+    return (n - 1, x & 127)
 
 #------------------------------------------------------------------------------
 
@@ -87,48 +84,19 @@ class jtag_driver:
             self.ftdi = None
             sys.exit(0)
         self.wrbuf = array.array('B')
-        # setup the gpio lines
-        self.gpio_dir = _TCK | _TDI | _TMS
-        self.gpio_val = 0
-        self.ftdi.write_data((Ftdi.SET_BITS_LOW, _lsb(self.gpio_val), _lsb(self.gpio_dir)))
-        self.ftdi.write_data((Ftdi.SET_BITS_HIGH, _msb(self.gpio_val), _msb(self.gpio_dir)))
-
-    def reset_jtag(self):
-        # TODO - pulse test reset line if we have one
-        self.state_idle()
+        self.gpio_init()
+        self.tap = tap.tap()
+        self.state_reset()
+        self.sir_end_state = 'IDLE'
+        self.sdr_end_state = 'IDLE'
 
     def __del__(self):
         if self.ftdi:
             self.ftdi.close()
 
-    def gpio_out(self, gpio):
-        if gpio <= _GPIOL3:
-            self.ftdi.write_data((Ftdi.SET_BITS_LOW, _lsb(self.gpio_val), _lsb(self.gpio_dir)))
-        else:
-            self.ftdi.write_data((Ftdi.SET_BITS_HIGH, _msb(self.gpio_val), _msb(self.gpio_dir)))
-
-    def gpio_set(self, gpio):
-        """set a gpio pin"""
-        self.gpio_dir |= gpio
-        self.gpio_val |= gpio
-        self.gpio_out(gpio)
-
-    def gpio_clr(self, gpio):
-        """clear a gpio pin"""
-        self.gpio_dir |= gpio
-        self.gpio_val &= ~gpio
-        self.gpio_out(gpio)
-
-    def gpio_rd(self, gpio):
-        """read a gpio pin"""
-        if gpio <= _GPIOL3:
-            self.ftdi.write_data((Ftdi.GET_BITS_LOW,))
-            val = self.ftdi.read_data_bytes(1, _READ_RETRIES)[0]
-        else:
-            self.ftdi.write_data((Ftdi.GET_BITS_HIGH,))
-            val = self.ftdi.read_data_bytes(1, _READ_RETRIES)[0]
-            val <<= 8
-        return (val & gpio) != 0
+    def __str__(self):
+        """return a string describing the device"""
+        return self.ftdi.type
 
     def flush(self):
         """flush the write buffer to the ft2232"""
@@ -142,15 +110,29 @@ class jtag_driver:
         if flush:
             self.flush()
 
-    def shift_tms(self, tms, flush = False):
+    def state_x(self, dst):
+        """change the TAP state from self.state to dst"""
+        bits = self.tap.tms(self.state, dst)
+        if not bits:
+            # no state change
+            assert self.state == dst
+            return
+        tms = tms_mpsse(bits)
         cmd = _MPSSE_WRITE_TMS | _MPSSE_BITMODE | _MPSSE_LSB | _MPSSE_WRITE_NEG
-        self.write((cmd, tms[0], tms[1]), flush)
+        self.write((cmd, tms[0], tms[1]), True)
+        self.state = dst
 
-    def shift_data(self, tdi, tdo):
+    def state_reset(self):
+        """from *any* state go to the reset state"""
+        self.state = '*'
+        self.state_x('RESET')
+
+    def shift_data(self, tdi, tdo, end_state):
         """
         write (and possibly read) a bit stream from the JTAGkey
         tdi - bit buffer of data to be written to the JTAG TDI pin
         tdo - bit buffer for the data read from the JTAG TDO pin (optional)
+        end_state - leave the TAP state machine in this state
         """
         wr = tdi.get()
         io_bits = tdi.n - 1
@@ -180,9 +162,11 @@ class jtag_driver:
             self.write((cmd, io_bits - 1, wr[io_bytes]))
 
         # the last bit of output data is bit 7 of the tms value (goes onto tdi)
-        # continue to read during the return to run-test/idle to get the last bit of tdo data
+        # continue to read to get the last bit of tdo data
         cmd = read_cmd | _MPSSE_WRITE_TMS | _MPSSE_BITMODE | _MPSSE_LSB | _MPSSE_WRITE_NEG
-        self.write((cmd, _sx2rti[0], _sx2rti[1] | last_bit))
+        tms = tms_mpsse(self.tap.tms(self.state, end_state))
+        self.write((cmd, tms[0], tms[1] | last_bit))
+        self.state = end_state
 
         # if we are only writing, return
         if tdo is None:
@@ -199,7 +183,7 @@ class jtag_driver:
             rd[-2] >>= (8 - io_bits)
 
         # get the last bit from the tms response byte (last byte)
-        last_bit = (rd[-1] >> (7 - _sx2rti[0])) & 1
+        last_bit = (rd[-1] >> (7 - tms[0])) & 1
         last_bit <<= io_bits
 
         # add the last bit
@@ -217,33 +201,57 @@ class jtag_driver:
 
     def scan_ir(self, tdi, tdo = None):
         """write (and possibly read) a bit stream through the IR in the JTAG chain"""
-        # run-test/idle -> shift-ir
-        self.shift_tms(_rti2sir)
-        self.shift_data(tdi, tdo)
+        self.state_x('IRSHIFT')
+        self.shift_data(tdi, tdo, self.sir_end_state)
 
     def scan_dr(self, tdi, tdo = None):
         """write (and possibly read) a bit stream through the DR in the JTAG chain"""
-        # run-test/idle -> shift-dr
-        self.shift_tms(_rti2sdr)
-        self.shift_data(tdi, tdo)
+        self.state_x('DRSHIFT')
+        self.shift_data(tdi, tdo, self.sdr_end_state)
 
-    def state_reset(self):
-        """goto the reset state"""
-        # any state -> reset
-        self.shift_tms(_x2r, True)
-
-    def state_idle(self):
-        """goto the idle state"""
-        # any state -> run-test/idle
-        self.shift_tms(_x2rti, True)
+    def reset_jtag(self):
+        # TODO - pulse test reset line if we have one
+        self.state_reset()
 
     def test_reset(self, val):
         """control the test reset line"""
         # TODO
         pass
 
-    def __str__(self):
-        """return a string describing the device"""
-        return self.ftdi.type
+    def gpio_init(self):
+        """setup the gpio lines"""
+        self.gpio_dir = _TCK | _TDI | _TMS
+        self.gpio_val = 0
+        self.ftdi.write_data((Ftdi.SET_BITS_LOW, _lsb(self.gpio_val), _lsb(self.gpio_dir)))
+        self.ftdi.write_data((Ftdi.SET_BITS_HIGH, _msb(self.gpio_val), _msb(self.gpio_dir)))
+
+    def gpio_out(self, gpio):
+        if gpio <= _GPIOL3:
+            self.ftdi.write_data((Ftdi.SET_BITS_LOW, _lsb(self.gpio_val), _lsb(self.gpio_dir)))
+        else:
+            self.ftdi.write_data((Ftdi.SET_BITS_HIGH, _msb(self.gpio_val), _msb(self.gpio_dir)))
+
+    def gpio_set(self, gpio):
+        """set a gpio pin"""
+        self.gpio_dir |= gpio
+        self.gpio_val |= gpio
+        self.gpio_out(gpio)
+
+    def gpio_clr(self, gpio):
+        """clear a gpio pin"""
+        self.gpio_dir |= gpio
+        self.gpio_val &= ~gpio
+        self.gpio_out(gpio)
+
+    def gpio_rd(self, gpio):
+        """read a gpio pin"""
+        if gpio <= _GPIOL3:
+            self.ftdi.write_data((Ftdi.GET_BITS_LOW,))
+            val = self.ftdi.read_data_bytes(1, _READ_RETRIES)[0]
+        else:
+            self.ftdi.write_data((Ftdi.GET_BITS_HIGH,))
+            val = self.ftdi.read_data_bytes(1, _READ_RETRIES)[0]
+            val <<= 8
+        return (val & gpio) != 0
 
 #------------------------------------------------------------------------------

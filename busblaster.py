@@ -57,6 +57,8 @@ _cpld_itf = 2 # cpld jtag is on the second interface
 #-----------------------------------------------------------------------------
 # cpld configuration files
 
+_file_path = './bitfiles/BBv2.5/'
+
 _cpld_files = {}
 
 #-----------------------------------------------------------------------------

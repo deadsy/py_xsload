@@ -17,6 +17,7 @@ import bitfile
 def main5():
     b = busblaster.board()
     print b
+    b.load_cpld('BBv2-JTAGkey-v1.4-verilog.svf')
 
 def main4():
     b = xula.board()

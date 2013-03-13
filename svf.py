@@ -137,7 +137,7 @@ class svf:
         for l in f:
             self.line += 1
             l = l.strip()
-            if l.startswith('//'):
+            if l.startswith('//') or len(l) == 0:
                 continue
             if not l.endswith(';'):
                 raise Error, 'line %d: missing ; at end of line' % self.line

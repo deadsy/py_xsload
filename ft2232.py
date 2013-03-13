@@ -237,6 +237,11 @@ class jtag_driver:
         # any state -> run-test/idle
         self.shift_tms(_x2rti, True)
 
+    def test_reset(self, val):
+        """control the test reset line"""
+        # TODO
+        pass
+
     def __str__(self):
         """return a string describing the device"""
         return self.ftdi.type

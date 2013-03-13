@@ -7,7 +7,7 @@ ENDDR IDLE;
 STATE RESET;
 STATE IDLE;
 FREQUENCY 1E6 HZ;
-//Operation: Program -p 0 -e -v 
+//Operation: Program -p 0 -e -v
 TIR 0 ;
 HIR 0 ;
 TDR 0 ;
@@ -37,7 +37,7 @@ HDR 0 ;
 TDR 0 ;
 //Loading device with 'idcode' instruction.
 SIR 8 TDI (01) ;
-SDR 32 TDI (00000000) TDO (f6e1f093) ;
+SDR 32 TDI (00000000) TDO (f6e1f093) MASK (0fff8fff) ;
 //Check for Read/Write Protect.
 SIR 8 TDI (ff) TDO (01) MASK (03) ;
 TIR 0 ;
@@ -206,8 +206,8 @@ TDR 0 ;
 SIR 8 TDI (e8) ;
 //Loading device with 'enable' instruction.
 SIR 8 TDI (e8) ;
-// Verification. 
-// Loading device with a 'verify' instruction. 
+// Verification.
+// Loading device with a 'verify' instruction.
 ENDIR IRPAUSE;
 SIR 8 TDI (ee) ;
 ENDDR DRPAUSE;
@@ -608,7 +608,7 @@ SDR 6 TDI (25) SMASK (3f) ;
 RUNTEST DRPAUSE 20 TCK;
 ENDDR IDLE;
 RUNTEST IDLE 100 TCK;
-// masking lower UES bits. 
+// masking lower UES bits.
 SDR 260 TDI (0fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff) SMASK (0fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff) TDO (0fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff) MASK (000000000000
 000000000000000000000000000000000000000000000000000000) ;
 RUNTEST 100 TCK;
@@ -625,8 +625,8 @@ SIR 8 TDI (c0) ;
 RUNTEST IDLE 100 TCK;
 //Loading device with 'enable' instruction.
 SIR 8 TDI (e8) ;
-// Setting Done bit ... 
-// Loading device with a 'program' instruction. 
+// Setting Done bit ...
+// Loading device with a 'program' instruction.
 ENDIR IRPAUSE;
 SIR 8 TDI (ea) ;
 SDR 266 TDI (005ffbffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff) SMASK (03ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff) ;

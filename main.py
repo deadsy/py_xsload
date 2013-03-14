@@ -33,7 +33,8 @@ def main2():
 def main1():
     b = xsa3s1000.board()
     print b
-    b.load_fpga('/home/jasonh/work/fpga/jasonh/j1_test/src/firmware/j1_test.bit')
+    b.load_cpld('LPT/dwnldpar.svf')
+    #b.load_fpga('/home/jasonh/work/fpga/jasonh/j1_test/src/firmware/j1_test.bit')
     #b.load_fpga('/home/jasonh/work/fpga/jasonh/ram_test/src/rt.bit')
     #b.load_fpga('/home/jasonh/work/fpga/jasonh/j1_demo/src/j1demo.bit')
     #b.load_fpga('/home/jasonh/work/fpga/jasonh/uart_test/uart_test.bit')
@@ -42,6 +43,6 @@ def main1():
 #------------------------------------------------------------------------------
 
 logging.getLogger('').addHandler(logging.StreamHandler())
-main5()
+main1()
 
 #------------------------------------------------------------------------------

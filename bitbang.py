@@ -5,15 +5,9 @@ Bit Bang JTAG Driver - JTAG via simple single bit IO lines
 """
 #------------------------------------------------------------------------------
 
-import logging
 import time
-
 import bits
-
-#------------------------------------------------------------------------------
-
-_log = logging.getLogger('bitbang')
-#_log.setLevel(logging.DEBUG)
+import tap
 
 #------------------------------------------------------------------------------
 
@@ -25,6 +19,10 @@ class jtag_driver:
 
     def __init__(self, io):
         self.io = io
+        self.tap = tap.tap()
+        self.state_reset()
+        self.sir_end_state = 'IDLE'
+        self.sdr_end_state = 'IDLE'
 
     def clock_tms(self, tms):
         """clock out a tms bit"""
@@ -46,6 +44,21 @@ class jtag_driver:
         """set the tck frequency"""
         pass
 
+    def state_x(self, dst):
+        """change the TAP state from self.state to dst"""
+        bits = self.tap.tms(self.state, dst)
+        if not bits:
+            # no state change
+            assert self.state == dst
+            return
+        [self.clock_tms(b) for b in bits]
+        self.state = dst
+
+    def state_reset(self):
+        """from *any* state go to the reset state"""
+        self.state = '*'
+        self.state_x('RESET')
+
     def shift_data(self, tdi, tdo):
         """
         write (and possibly read) a bit stream from JTAG
@@ -63,51 +76,37 @@ class jtag_driver:
                 tdo.shr(self.clock_data_io(0, tdi.shr()))
             # last bit
             tdo.shr(self.clock_data_io(1, tdi.shr()))
-        # exit-x -> run-test/idle
-        [self.clock_tms(x) for x in (1,0)]
+        # Note: we are now in the IR/DR EXIT1 state
 
     def scan_ir(self, tdi, tdo = None):
         """write (and possibly read) a bit stream through the IR in the JTAG chain"""
-        _log.debug('jtag.scan_ir()')
-        # run-test/idle -> shift-ir
-        [self.clock_tms(x) for x in (1,1,0,0)]
+        self.state_x('IRSHIFT')
         self.shift_data(tdi, tdo)
+        self.state = 'IREXIT1'
+        self.state_x(self.sir_end_state)
 
     def scan_dr(self, tdi, tdo = None):
         """write (and possibly read) a bit stream through the DR in the JTAG chain"""
-        _log.debug('jtag.scan_dr()')
-        # run-test/idle -> shift-dr
-        [self.clock_tms(x) for x in (1,0,0)]
+        self.state_x('DRSHIFT')
         self.shift_data(tdi, tdo)
+        self.state = 'DREXIT1'
+        self.state_x(self.sdr_end_state)
 
     def system_reset(self):
         """assert the ~SRST line to reset the target"""
-        _log.debug('jtag.system_reset()')
         #TODO - pulse system reset line
         pass
 
     def test_reset(self, val):
         """control the test reset line"""
-        _log.debug('jtag.test_reset()')
         self.io.test_reset(val)
 
-    def state_reset(self):
-        """goto the reset state"""
-        # any state -> reset
-        [self.clock_tms(x) for x in (1,1,1,1,1)]
-
-    def state_idle(self):
-        """goto the idle state"""
-        # any state -> run-test/idle
-        [self.clock_tms(x) for x in (1,1,1,1,1,0)]
-
     def reset_jtag(self):
-        """reset the TAP of all JTAG devices in the chain to the run-test/idle state"""
-        _log.debug('jtag.reset_jtag()')
+        """reset the TAP of all JTAG devices in the chain"""
         self.test_reset(True)
         time.sleep(_TRST_TIME)
         self.test_reset(False)
-        self.state_idle()
+        self.state_reset()
 
     def __str__(self):
         """return a string describing the device"""

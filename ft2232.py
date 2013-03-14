@@ -19,6 +19,7 @@ from ftdi import Ftdi
 
 #------------------------------------------------------------------------------
 
+_TRST_TIME = 0.01
 _READ_RETRIES = 4
 
 #------------------------------------------------------------------------------
@@ -209,14 +210,17 @@ class jtag_driver:
         self.state_x('DRSHIFT')
         self.shift_data(tdi, tdo, self.sdr_end_state)
 
-    def reset_jtag(self):
-        # TODO - pulse test reset line if we have one
-        self.state_reset()
-
     def test_reset(self, val):
         """control the test reset line"""
         # TODO
         pass
+
+    def reset_jtag(self):
+        """reset the TAP of all JTAG devices in the chain"""
+        self.test_reset(True)
+        time.sleep(_TRST_TIME)
+        self.test_reset(False)
+        self.state_reset()
 
     def gpio_init(self):
         """setup the gpio lines"""
